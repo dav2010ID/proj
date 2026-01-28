@@ -1,7 +1,7 @@
 local here = debug.getinfo(1, "S").source:sub(2)
 local here_dir = here:match("^(.*)[/\\]") or "."
 local lua_root = here_dir .. "/.."
-package.path = lua_root .. "/?.lua;" .. lua_root .. "/?/init.lua;" .. package.path
+package.path = here_dir .. "/?.lua;" .. lua_root .. "/?.lua;" .. lua_root .. "/?/init.lua;" .. package.path
 local log = require("core.log")
 local recipe = require("core.recipe")
 local planner = require("core.planner")
@@ -11,6 +11,12 @@ local virtual_machine = require("runtime.virtual_machine")
 local virtual_storage = require("runtime.virtual_storage")
 local errors = require("core.error_codes")
 local startup_test = require("startup_test")
+local startup = require("startup")
+if type(startup) ~= "table" then
+  package.loaded["startup"] = nil
+  local chunk = assert(loadfile(lua_root .. "/startup.lua"))
+  startup = chunk("startup")
+end
 
 local function assert_equal(actual, expected, message)
   if actual ~= expected then
@@ -524,7 +530,7 @@ local function test_executor_yield()
 end
 
 local function test_startup_run()
-  local snapshot = startup_test.run()
+  local snapshot = startup.run()
   if not snapshot then
     error("startup run returned nil")
   end
@@ -532,6 +538,14 @@ local function test_startup_run()
   assert_equal(snapshot["minecraft:oak_planks"], 2, "startup oak_planks")
   assert_equal(snapshot["minecraft:stick"], 2, "startup stick")
   assert_equal(snapshot["minecraft:crafting_table"], 1, "startup crafting_table")
+end
+
+local function test_startup_test_run()
+  local snapshot = startup_test.run()
+  if not snapshot then
+    error("startup_test run returned nil")
+  end
+  assert_equal(snapshot["minecraft:advanced_machine"], 1, "advanced_machine")
 end
 
 local function run_all()
@@ -569,6 +583,8 @@ local function run_all()
   test_executor_yield()
   log.info("test_startup_run")
   test_startup_run()
+  log.info("test_startup_test_run")
+  test_startup_test_run()
 end
 
 local ok, err = pcall(run_all)

@@ -11,8 +11,8 @@ function M.run()
   local world = virtual_world.new({
     ["minecraft:oak_log"] = 8,
     ["minecraft:cobblestone"] = 16,
-    ["minecraft:iron_ore"] = 6,
-    ["minecraft:coal"] = 6,
+    ["minecraft:iron_ore"] = 13,
+    ["minecraft:coal"] = 13,
   })
 
   local scheduler = world.scheduler
