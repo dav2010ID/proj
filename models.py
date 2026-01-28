@@ -48,8 +48,11 @@ class RecipeConditions:
 class SupplyStep:
     item: str
     count: int
+    kind: str = "supply"
 
     def __post_init__(self) -> None:
+        if self.kind != "supply":
+            raise ValueError("SupplyStep.kind must be 'supply'")
         if self.count <= 0:
             raise ValueError("SupplyStep.count must be > 0")
         object.__setattr__(self, "item", normalize(self.item))
@@ -62,8 +65,11 @@ class SupplyStep:
 class CraftStep:
     recipe: Recipe
     times: int
+    kind: str = "craft"
 
     def __post_init__(self) -> None:
+        if self.kind != "craft":
+            raise ValueError("CraftStep.kind must be 'craft'")
         if self.times <= 0:
             raise ValueError("CraftStep.times must be > 0")
 

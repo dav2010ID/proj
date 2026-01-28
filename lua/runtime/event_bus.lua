@@ -1,0 +1,23 @@
+﻿local M = {}
+
+function M.new()
+  local self = { subscribers = {} }
+
+  function self:subscribe(event_type, handler)
+    if not self.subscribers[event_type] then
+      self.subscribers[event_type] = {}
+    end
+    table.insert(self.subscribers[event_type], handler)
+  end
+
+  function self:emit(event)
+    local handlers = self.subscribers[event.type] or {}
+    for _, h in ipairs(handlers) do
+      h(event)
+    end
+  end
+
+  return self
+end
+
+return M
