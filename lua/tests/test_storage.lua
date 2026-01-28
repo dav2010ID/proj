@@ -55,6 +55,9 @@ local function test_async_batch_supply()
   )
   local storage = world.storage
   storage:prepare({ ["item:a"] = true, ["item:b"] = true })
+  if storage.set_limits then
+    storage:set_limits(1, 3)
+  end
   local req_id = storage:get_batch_async({ ["item:a"] = 2, ["item:b"] = 3 })
   assert_equal(storage:poll_request(req_id), task_state.TaskState.RUNNING, "batch pending")
   world:tick(3)

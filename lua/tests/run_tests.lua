@@ -9,6 +9,7 @@ local modules = {
   "tests.test_planner",
   "tests.test_executor",
   "tests.test_storage",
+  "tests.test_supply_router",
   "tests.test_startup",
   "tests.test_provider_contract",
   "tests.test_parallel_goals",

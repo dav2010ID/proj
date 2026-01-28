@@ -1,5 +1,6 @@
 local task_state = require("runtime.task_state")
 local errors = require("core.error_codes")
+local supply_router = require("runtime.supply_router")
 
 local M = {}
 
@@ -149,8 +150,12 @@ function M.new(resource_provider, machine_allocator)
     if next(self.supply_totals) == nil then
       return
     end
-    local req_id = self.resource:get_batch_async(self.supply_totals)
-    table.insert(self.resource_requests, { id = req_id, batch = true })
+    local caps = self.resource.capabilities and self.resource:capabilities() or {}
+    local batches = supply_router.split_batches(self.supply_totals, caps)
+    for _, batch in ipairs(batches) do
+      local req_id = self.resource:get_batch_async(batch)
+      table.insert(self.resource_requests, { id = req_id, batch = true })
+    end
     self.batches_dispatched = true
   end
 

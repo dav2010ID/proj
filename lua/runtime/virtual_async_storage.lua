@@ -13,6 +13,8 @@ function M.new(scheduler, initial, latency)
     frozen = false,
     counter = 0,
     supports_set = nil,
+    max_items_per_batch = nil,
+    max_total_count = nil,
   }
 
   function self:prepare(reachable)
@@ -49,6 +51,13 @@ function M.new(scheduler, initial, latency)
 
   function self:supports_batch()
     return true
+  end
+
+  function self:capabilities()
+    return {
+      max_items_per_batch = self.max_items_per_batch,
+      max_total_count = self.max_total_count,
+    }
   end
 
   function self:get_async(item, count)
@@ -158,6 +167,11 @@ function M.new(scheduler, initial, latency)
       set[util.normalize(item)] = true
     end
     self.supports_set = set
+  end
+
+  function self:set_limits(max_items_per_batch, max_total_count)
+    self.max_items_per_batch = max_items_per_batch
+    self.max_total_count = max_total_count
   end
 
   function self:inflight_count()
