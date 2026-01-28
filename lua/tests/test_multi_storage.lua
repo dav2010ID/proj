@@ -55,6 +55,7 @@ local function test_two_storages_one_failed()
     if exec_ok then
       error("expected failure")
     end
+    assert(err ~= nil, "expected error")
     assert_equal(err.code, errors.RESOURCE_FAILED, "resource failed")
   end)
 
