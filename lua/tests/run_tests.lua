@@ -10,7 +10,7 @@ local virtual_world = require("runtime.virtual_world")
 local virtual_machine = require("runtime.virtual_machine")
 local virtual_storage = require("runtime.virtual_storage")
 local errors = require("core.error_codes")
-local startup = require("startup")
+local startup_test = require("startup_test")
 
 local function assert_equal(actual, expected, message)
   if actual ~= expected then
@@ -524,7 +524,7 @@ local function test_executor_yield()
 end
 
 local function test_startup_run()
-  local snapshot = startup.run()
+  local snapshot = startup_test.run()
   if not snapshot then
     error("startup run returned nil")
   end

@@ -9,39 +9,132 @@ local M = {}
 
 function M.run()
   local world = virtual_world.new({
-    ["minecraft:oak_log"] = 2,
-    ["minecraft:oak_planks"] = 0,
-    ["minecraft:stick"] = 0,
-    ["minecraft:crafting_table"] = 0,
+    ["minecraft:oak_log"] = 8,
+    ["minecraft:cobblestone"] = 16,
+    ["minecraft:iron_ore"] = 6,
+    ["minecraft:coal"] = 6,
   })
 
   local scheduler = world.scheduler
-  local provider = virtual_machine.new(scheduler, { duration = 2 })
-  world:attach_machine("crafting_table", provider, "vt_1")
+
+  -- machines
+  local crafting = virtual_machine.new(scheduler, { duration = 1 })
+  local furnace  = virtual_machine.new(scheduler, { duration = 3 })
+  local assembler = virtual_machine.new(scheduler, { duration = 2 })
+
+  world:attach_machine("crafting_table", crafting, "ct_1")
+  world:attach_machine("furnace", furnace, "f_1")
+  world:attach_machine("assembler", assembler, "a_1")
 
   local registry = recipe.new_registry()
+
+  -- 1. logs -> planks
   recipe.add(registry, {
-    id = "oak_planks",
+    id = "planks",
     inputs = { { item = "minecraft:oak_log", count = 1 } },
     outputs = { { item = "minecraft:oak_planks", count = 4 } },
     machine = "crafting_table",
-    priority = 10,
+    priority = 50,
   })
+
+  -- 2. planks -> sticks
   recipe.add(registry, {
     id = "sticks",
     inputs = { { item = "minecraft:oak_planks", count = 2 } },
     outputs = { { item = "minecraft:stick", count = 4 } },
     machine = "crafting_table",
-    priority = 5,
+    priority = 40,
   })
+
+  -- 3. cobble -> furnace
   recipe.add(registry, {
-    id = "crafting_table",
+    id = "furnace",
     inputs = {
-      { item = "minecraft:oak_planks", count = 4 },
+      { item = "minecraft:cobblestone", count = 8 },
+    },
+    outputs = { { item = "minecraft:furnace", count = 1 } },
+    machine = "crafting_table",
+    priority = 30,
+  })
+
+  -- 4. iron ore -> iron ingot
+  recipe.add(registry, {
+    id = "smelt_iron",
+    inputs = {
+      { item = "minecraft:iron_ore", count = 1 },
+      { item = "minecraft:coal", count = 1 },
+    },
+    outputs = { { item = "minecraft:iron_ingot", count = 1 } },
+    machine = "furnace",
+    priority = 60,
+  })
+
+  -- 5. iron ingot -> plates
+  recipe.add(registry, {
+    id = "iron_plate",
+    inputs = { { item = "minecraft:iron_ingot", count = 2 } },
+    outputs = { { item = "minecraft:iron_plate", count = 1 } },
+    machine = "assembler",
+    priority = 20,
+  })
+
+  -- 6. iron plates -> casing
+  recipe.add(registry, {
+    id = "machine_casing",
+    inputs = {
+      { item = "minecraft:iron_plate", count = 4 },
+    },
+    outputs = { { item = "minecraft:machine_casing", count = 1 } },
+    machine = "assembler",
+    priority = 15,
+  })
+
+  -- 7. sticks + iron -> gears
+  recipe.add(registry, {
+    id = "iron_gear",
+    inputs = {
+      { item = "minecraft:iron_ingot", count = 2 },
       { item = "minecraft:stick", count = 2 },
     },
-    outputs = { { item = "minecraft:crafting_table", count = 1 } },
+    outputs = { { item = "minecraft:iron_gear", count = 1 } },
     machine = "crafting_table",
+    priority = 25,
+  })
+
+  -- 8. planks + iron -> circuit board
+  recipe.add(registry, {
+    id = "basic_circuit",
+    inputs = {
+      { item = "minecraft:oak_planks", count = 4 },
+      { item = "minecraft:iron_ingot", count = 1 },
+    },
+    outputs = { { item = "minecraft:basic_circuit", count = 1 } },
+    machine = "assembler",
+    priority = 10,
+  })
+
+  -- 9. gears + circuit -> mechanism
+  recipe.add(registry, {
+    id = "mechanism",
+    inputs = {
+      { item = "minecraft:iron_gear", count = 2 },
+      { item = "minecraft:basic_circuit", count = 1 },
+    },
+    outputs = { { item = "minecraft:mechanism", count = 1 } },
+    machine = "assembler",
+    priority = 5,
+  })
+
+  -- 10. final assembly
+  recipe.add(registry, {
+    id = "advanced_machine",
+    inputs = {
+      { item = "minecraft:machine_casing", count = 1 },
+      { item = "minecraft:mechanism", count = 1 },
+      { item = "minecraft:furnace", count = 1 },
+    },
+    outputs = { { item = "minecraft:advanced_machine", count = 1 } },
+    machine = "assembler",
     priority = 1,
   })
 
@@ -49,7 +142,9 @@ function M.run()
   local resource = world.storage
   local allocator = world:get_allocator()
 
-  local ok, plan_or_err = planner.plan("minecraft:crafting_table", 1, recipes_by_output, resource)
+  local ok, plan_or_err =
+    planner.plan("minecraft:advanced_machine", 1, recipes_by_output, resource)
+
   if not ok then
     log.error(plan_or_err)
     return nil
@@ -64,12 +159,7 @@ function M.run()
     end
   end)
 
-  local running = true
-  while running do
-    if coroutine.status(co) == "dead" then
-      running = false
-      break
-    end
+  while coroutine.status(co) ~= "dead" do
     local ok_run, err_run = coroutine.resume(co)
     if not ok_run then
       log.error(err_run)
@@ -83,6 +173,7 @@ function M.run()
   for k, v in pairs(snapshot) do
     log.info("  " .. k .. " = " .. tostring(v))
   end
+
   return snapshot
 end
 
