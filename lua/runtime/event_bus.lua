@@ -1,4 +1,4 @@
-﻿local M = {}
+local M = {}
 
 function M.new()
   local self = { subscribers = {} }

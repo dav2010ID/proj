@@ -1,4 +1,4 @@
-﻿local M = {}
+local M = {}
 
 function M.normalize(item)
   if type(item) ~= "string" then

@@ -1,4 +1,4 @@
-﻿local M = {}
+local M = {}
 
 function M.new(machine_id, machine_type, provider, state)
   return {

@@ -1,4 +1,4 @@
-﻿local util = require("core.util")
+local util = require("core.util")
 local steps = require("core.steps")
 
 local M = {}

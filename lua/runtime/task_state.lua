@@ -1,4 +1,4 @@
-﻿local M = {}
+local M = {}
 
 local TaskState = {
   RUNNING = "running",

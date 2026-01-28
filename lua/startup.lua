@@ -1,4 +1,4 @@
-﻿local log = require("core.log")
+local log = require("core.log")
 local recipe = require("core.recipe")
 local planner = require("core.planner")
 local executor = require("runtime.executor")

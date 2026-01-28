@@ -1,4 +1,4 @@
-﻿local util = require("core.util")
+local util = require("core.util")
 
 local M = {}
 
