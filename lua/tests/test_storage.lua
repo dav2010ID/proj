@@ -69,11 +69,27 @@ local function test_async_batch_supply()
   assert_equal(storage:get("item:b"), 0, "stock b")
 end
 
+local function test_async_batch_fail_rolls_back()
+  local world = virtual_world.new(
+    { ["item:a"] = 1 },
+    { async_storage = true, storage_delay = 2 }
+  )
+  local storage = world.storage
+  storage:prepare({ ["item:a"] = true })
+  local req_id = storage:get_batch_async({ ["item:a"] = 2 })
+  world:tick(2)
+  local state = storage:poll_request(req_id)
+  assert_equal(state, task_state.TaskState.FAILED, "batch failed")
+  storage:rollback()
+  assert_equal(storage:get("item:a"), 1, "stock preserved on fail")
+end
+
 function M.run()
   test_storage_rollback()
   test_storage_snapshot_freeze()
   test_async_storage_get()
   test_async_batch_supply()
+  test_async_batch_fail_rolls_back()
 end
 
 return M

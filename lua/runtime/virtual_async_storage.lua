@@ -33,12 +33,42 @@ function M.new(scheduler, initial, latency)
     return copy
   end
 
+  function self:begin()
+    self.frozen = false
+  end
+
   function self:get(item)
     local key = util.normalize(item)
     if self.reachable and not self.reachable[key] then
       error({ code = errors.ITEM_NOT_REACHABLE, item = key })
     end
     return self.data[key] or 0
+  end
+
+  function self:consume(item, count)
+    local key = util.normalize(item)
+    if self.frozen then
+      error({ code = errors.MUTATE_AFTER_SNAPSHOT })
+    end
+    local current = self.data[key] or 0
+    if count < 0 then
+      error({ code = errors.NEGATIVE_COUNT, item = key, count = count })
+    end
+    if current < count then
+      error({ code = errors.INSUFFICIENT_STOCK, item = key, need = count, current = current })
+    end
+    self.data[key] = current - count
+  end
+
+  function self:add(item, count)
+    local key = util.normalize(item)
+    if self.frozen then
+      error({ code = errors.MUTATE_AFTER_SNAPSHOT })
+    end
+    if count < 0 then
+      error({ code = errors.NEGATIVE_COUNT, item = key, count = count })
+    end
+    self.data[key] = (self.data[key] or 0) + count
   end
 
   function self:supports(item)

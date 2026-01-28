@@ -9,6 +9,8 @@ local modules = {
   "tests.test_planner",
   "tests.test_executor",
   "tests.test_storage",
+  "tests.test_async_storage",
+  "tests.test_multi_storage",
   "tests.test_supply_router",
   "tests.test_startup",
   "tests.test_provider_contract",
@@ -16,10 +18,15 @@ local modules = {
 }
 
 local function run_all()
+  local ctx = {
+    seed = os.time(),
+    max_ticks = 200,
+    log_level = "info",
+  }
   for _, name in ipairs(modules) do
     local mod = require(name)
     log.info("run " .. name)
-    mod.run()
+    mod.run(ctx)
   end
 end
 
