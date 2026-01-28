@@ -12,8 +12,10 @@ function M.new(catalog)
   end
 
   function self:on_machine_removed(event)
-    self.catalog:unregister(event.machine_id)
-    self.disabled[event.machine_id] = nil
+    if self.disabled[event.machine_id] then
+      return
+    end
+    self.disabled[event.machine_id] = true
     self.dirty = true
   end
 
@@ -36,6 +38,14 @@ function M.new(catalog)
     end
     self.dirty = false
     return machines.new_allocator(active)
+  end
+
+  function self:cleanup_removed()
+    for machine_id, _ in pairs(self.disabled) do
+      self.catalog:unregister(machine_id)
+      self.disabled[machine_id] = nil
+    end
+    self.dirty = true
   end
 
   return self

@@ -1,5 +1,4 @@
-﻿local base = require("providers.machine.base")
-local machines = require("machines")
+﻿local task_state = require("runtime.task_state")
 
 local M = {}
 
@@ -9,12 +8,17 @@ function M.new(resource_provider, machine_allocator)
     allocator = machine_allocator,
     buffer = {},
     inflight = {},
+    supply_totals = {},
   }
 
+  -- ExecutionContext contract:
+  -- - execute_supply/try_start_craft/poll_tasks throw on errors
+  -- - supply is non-blocking and only reserves logically (buffer)
+  -- - craft is exclusive per machine, allocator controls locks
+  -- - context owns transaction boundaries (consume_supplies/commit/rollback)
   function self:execute_supply(step)
-    self.resource:consume(step.item, step.count)
     self.buffer[step.item] = (self.buffer[step.item] or 0) + step.count
-    return true
+    self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
   end
 
   local function inputs_available(step)
@@ -31,10 +35,11 @@ function M.new(resource_provider, machine_allocator)
     for _, input in ipairs(step.recipe.inputs) do
       local need = input.count * step.times
       self.buffer[input.item] = (self.buffer[input.item] or 0) - need
+      assert(self.buffer[input.item] >= 0, "buffer_negative")
     end
   end
 
-  function self:execute_craft(step)
+  function self:try_start_craft(step)
     if not inputs_available(step) then
       return false
     end
@@ -42,8 +47,8 @@ function M.new(resource_provider, machine_allocator)
     if not machine then
       return false
     end
-    consume_inputs(step)
     local handle = machine.provider:start(step.recipe, step.times)
+    consume_inputs(step)
     table.insert(self.inflight, { step = step, machine_id = machine.id, provider = machine.provider, handle = handle })
     return true
   end
@@ -53,9 +58,9 @@ function M.new(resource_provider, machine_allocator)
     for i = #self.inflight, 1, -1 do
       local task = self.inflight[i]
       local state = task.provider:poll(task.handle)
-      if state == base.TaskState.RUNNING then
+      if state == task_state.TaskState.RUNNING then
         -- continue
-      elseif state == base.TaskState.FAILED then
+      elseif state == task_state.TaskState.FAILED then
         self.allocator:unlock(task.machine_id)
         error(task.handle.error or "craft_failed")
       else
@@ -72,11 +77,17 @@ function M.new(resource_provider, machine_allocator)
     return progressed
   end
 
+  function self:consume_supplies()
+    for item, count in pairs(self.supply_totals) do
+      self.resource:consume(item, count)
+    end
+    self.supply_totals = {}
+  end
+
   return self
 end
 
-function M.execute(plan, resource_provider, machine_allocator)
-  local ctx = M.new(resource_provider, machine_allocator)
+local function run_loop(ctx, plan)
   local ready = {}
   for _, step in ipairs(plan) do
     table.insert(ready, step)
@@ -84,8 +95,8 @@ function M.execute(plan, resource_provider, machine_allocator)
 
   for _, step in ipairs(plan) do
     if step.kind == "craft" then
-      if not machine_allocator:supports_recipe(step.recipe) then
-        return false, "no_compatible_machine"
+      if not ctx.allocator:supports_recipe(step.recipe) then
+        error("no_compatible_machine")
       end
     end
   end
@@ -95,29 +106,42 @@ function M.execute(plan, resource_provider, machine_allocator)
 
     local remaining = {}
     for _, step in ipairs(ready) do
-      local ok = step:execute(ctx)
-      if ok then
+      if step.kind == "supply" then
+        ctx:execute_supply(step)
         progressed = true
+      elseif step.kind == "craft" then
+        if ctx:try_start_craft(step) then
+          progressed = true
+        else
+          table.insert(remaining, step)
+        end
       else
-        table.insert(remaining, step)
+        error("unknown_step")
       end
     end
     ready = remaining
 
-    local ok = false
-    local status, err = pcall(function()
-      ok = ctx:poll_tasks()
-    end)
-    if not status then
-      ctx.resource:rollback()
-      return false, err
-    end
+    local ok = ctx:poll_tasks()
     progressed = progressed or ok
 
-    if not progressed then
-      ctx.resource:rollback()
-      return false, "deadlock"
+    if not progressed and #ctx.inflight == 0 and #ready > 0 then
+      error("deadlock")
     end
+  end
+
+  ctx:consume_supplies()
+end
+
+function M.execute(plan, resource_provider, machine_allocator)
+  local ctx = M.new(resource_provider, machine_allocator)
+
+  local ok, err = pcall(function()
+    run_loop(ctx, plan)
+  end)
+
+  if not ok then
+    ctx.resource:rollback()
+    return false, err
   end
 
   ctx.resource:commit()

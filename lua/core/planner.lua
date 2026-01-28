@@ -21,10 +21,13 @@ local function compute_reachable(target, recipes_by_output)
 end
 
 local function select_recipe(recipes)
-  table.sort(recipes, function(a, b)
-    return (a.priority or 0) > (b.priority or 0)
-  end)
-  return recipes[1]
+  local best = nil
+  for _, recipe in ipairs(recipes) do
+    if not best or (recipe.priority or 0) > (best.priority or 0) then
+      best = recipe
+    end
+  end
+  return best
 end
 
 local function get_output_for_item(recipe, item)
@@ -37,6 +40,8 @@ local function get_output_for_item(recipe, item)
 end
 
 local function compress_supplies(plan)
+  -- Invariant: all supply steps are allowed to run before craft steps.
+  -- This intentionally groups supplies first to reduce IO.
   local totals = {}
   local order = {}
   local crafts = {}
@@ -92,9 +97,7 @@ local function plan_need(ctx, item, count)
   end
 
   local available = ctx.virtual_stock[key]
-  if available == nil then
-    return false, "item_not_initialized"
-  end
+  assert(available ~= nil, "item_not_initialized")
 
   local use = math.min(count, math.max(0, available))
   if use > 0 then
@@ -114,7 +117,7 @@ local function plan_need(ctx, item, count)
 
   local remain = count - use
   if remain == 0 then
-    return true
+    return true, nil
   end
 
   local recipes = ctx.recipes[key]
@@ -155,7 +158,7 @@ local function plan_need(ctx, item, count)
   end
   ctx.virtual_stock[key] = current - remain
   ctx.stack[key] = nil
-  return true
+  return true, nil
 end
 
 function M.plan(target_item_key, target_count, recipes_by_output, resource_provider)

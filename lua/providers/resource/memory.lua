@@ -4,85 +4,96 @@ local M = {}
 
 function M.new(initial)
   local self = {
-    available = initial or {},
-    consumed = {},
-    added = {},
-    frozen = false,
-    allowed = nil,
+    stock = initial or {},
+    delta_minus = {},
+    delta_plus = {},
+    snapshot_taken = false,
+    reachable = nil,
   }
 
   function self:prepare(reachable)
-    self.allowed = {}
+    self.reachable = {}
     for item, _ in pairs(reachable) do
-      self.allowed[util.normalize(item)] = true
+      self.reachable[util.normalize(item)] = true
     end
+    self.snapshot_taken = false
+    self.delta_minus = {}
+    self.delta_plus = {}
   end
 
   function self:get(item)
     local key = util.normalize(item)
-    if self.allowed and not self.allowed[key] then
-      error("get outside reachable items")
+    if self.reachable and not self.reachable[key] then
+      error({ code = "GET_OUTSIDE_REACHABLE", item = key })
     end
-    if self.frozen and self.available[key] == nil then
-      error("get after snapshot")
+    if self.snapshot_taken and self.stock[key] == nil then
+      error({ code = "GET_AFTER_SNAPSHOT", item = key })
     end
-    if self.available[key] == nil then
-      self.available[key] = 0
+    if self.stock[key] == nil then
+      self.stock[key] = 0
     end
-    return self.available[key]
+    return self.stock[key]
   end
 
   function self:consume(item, count)
     local key = util.normalize(item)
-    local current = self.available[key] or 0
+    if self.snapshot_taken then
+      error({ code = "MUTATE_AFTER_SNAPSHOT" })
+    end
+    local current = self.stock[key] or 0
     if count < 0 then
-      error("count must be non-negative")
+      error({ code = "NEGATIVE_COUNT", item = key, count = count })
     end
     if current < count then
-      error("insufficient stock")
+      error({ code = "INSUFFICIENT_STOCK", item = key, need = count, current = current })
     end
-    self.available[key] = current - count
+    self.stock[key] = current - count
     if count > 0 then
-      table.insert(self.consumed, { key = key, count = count })
+      table.insert(self.delta_minus, { key = key, count = count })
     end
   end
 
   function self:add(item, count)
     local key = util.normalize(item)
-    if count < 0 then
-      error("count must be non-negative")
+    if self.snapshot_taken then
+      error({ code = "MUTATE_AFTER_SNAPSHOT" })
     end
-    self.available[key] = (self.available[key] or 0) + count
+    if count < 0 then
+      error({ code = "NEGATIVE_COUNT", item = key, count = count })
+    end
+    self.stock[key] = (self.stock[key] or 0) + count
     if count > 0 then
-      table.insert(self.added, { key = key, count = count })
+      table.insert(self.delta_plus, { key = key, count = count })
     end
   end
 
   function self:commit()
-    self.consumed = {}
-    self.added = {}
+    self.delta_minus = {}
+    self.delta_plus = {}
+    self.snapshot_taken = false
   end
 
   function self:rollback()
-    for i = #self.added, 1, -1 do
-      local entry = self.added[i]
-      self.available[entry.key] = (self.available[entry.key] or 0) - entry.count
+    for i = #self.delta_plus, 1, -1 do
+      local entry = self.delta_plus[i]
+      self.stock[entry.key] = (self.stock[entry.key] or 0) - entry.count
     end
-    for i = #self.consumed, 1, -1 do
-      local entry = self.consumed[i]
-      self.available[entry.key] = (self.available[entry.key] or 0) + entry.count
+    for i = #self.delta_minus, 1, -1 do
+      local entry = self.delta_minus[i]
+      self.stock[entry.key] = (self.stock[entry.key] or 0) + entry.count
     end
-    self.consumed = {}
-    self.added = {}
+    self.delta_minus = {}
+    self.delta_plus = {}
+    self.snapshot_taken = false
   end
 
   function self:snapshot()
-    if self.frozen then
-      error("snapshot already taken")
+    if self.snapshot_taken then
+      error({ code = "SNAPSHOT_TAKEN" })
     end
-    self.frozen = true
+    self.snapshot_taken = true
     local copy = {}
-    for k, v in pairs(self.available) do
+    for k, v in pairs(self.stock) do
       copy[k] = v
     end
     return copy

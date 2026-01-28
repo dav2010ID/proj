@@ -1,7 +1,3 @@
-﻿local TaskState = {
-  RUNNING = "running",
-  DONE = "done",
-  FAILED = "failed",
-}
+﻿local task_state = require("runtime.task_state")
 
-return { TaskState = TaskState }
+return task_state

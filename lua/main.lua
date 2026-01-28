@@ -4,6 +4,7 @@ local executor = require("runtime.executor")
 local machines = require("machines")
 local crafting_table = require("providers.machine.crafting_table")
 local memory_resource = require("providers.resource.memory")
+local log = require("core.log")
 
 local registry = recipe.new_registry()
 recipe.add(registry, {
@@ -45,14 +46,14 @@ local allocator = machines.new_allocator({
 
 local ok, plan_or_err = planner.plan("minecraft:crafting_table", 1, recipes_by_output, resource)
 if not ok then
-  print("Plan failed: " .. plan_or_err)
+  log.error("Plan failed: " .. plan_or_err)
   return
 end
 
 local exec_ok, err = executor.execute(plan_or_err, resource, allocator)
 if not exec_ok then
-  print("Execution failed: " .. err)
+  log.error("Execution failed: " .. err)
   return
 end
 
-print("Execution complete")
+log.info("Execution complete")
