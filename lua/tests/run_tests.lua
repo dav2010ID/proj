@@ -10,6 +10,7 @@ local virtual_world = require("runtime.virtual_world")
 local virtual_machine = require("runtime.virtual_machine")
 local virtual_storage = require("runtime.virtual_storage")
 local errors = require("core.error_codes")
+local startup = require("startup")
 
 local function assert_equal(actual, expected, message)
   if actual ~= expected then
@@ -522,6 +523,17 @@ local function test_executor_yield()
   assert_equal(coroutine.status(co), "suspended", "executor yields")
 end
 
+local function test_startup_run()
+  local snapshot = startup.run()
+  if not snapshot then
+    error("startup run returned nil")
+  end
+  assert_equal(snapshot["minecraft:oak_log"], 0, "startup oak_log")
+  assert_equal(snapshot["minecraft:oak_planks"], 2, "startup oak_planks")
+  assert_equal(snapshot["minecraft:stick"], 2, "startup stick")
+  assert_equal(snapshot["minecraft:crafting_table"], 1, "startup crafting_table")
+end
+
 local function run_all()
   log.info("test_planner_basic")
   test_planner_basic()
@@ -555,6 +567,8 @@ local function run_all()
   test_executor_rollback_on_fail()
   log.info("test_executor_yield")
   test_executor_yield()
+  log.info("test_startup_run")
+  test_startup_run()
 end
 
 local ok, err = pcall(run_all)
