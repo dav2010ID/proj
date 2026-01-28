@@ -2,7 +2,7 @@ local assert_equal = require("tests.assert").assert_equal
 local assert_error = require("tests.test_utils").assert_error_code
 local recipe = require("core.recipe")
 local planner = require("core.planner")
-local virtual_world = require("runtime.virtual_world")
+local virtual_world = require("virtual.world")
 local errors = require("core.error_codes")
 
 local M = {}
@@ -99,3 +99,4 @@ function M.run()
 end
 
 return M
+

@@ -1,7 +1,7 @@
 local log = require("core.log")
 local assert_equal = require("tests.assert").assert_equal
 local task_state = require("runtime.task_state")
-local virtual_world = require("runtime.virtual_world")
+local virtual_world = require("virtual.world")
 
 local M = {}
 
@@ -67,3 +67,4 @@ function M.run_contract(provider_factory, recipe)
 end
 
 return M
+

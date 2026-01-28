@@ -7,3 +7,4 @@ function M.assert_equal(actual, expected, message)
 end
 
 return M
+

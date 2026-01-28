@@ -3,8 +3,8 @@ local utils = require("tests.test_utils")
 local planner = require("core.planner")
 local recipe = require("core.recipe")
 local executor = require("runtime.executor")
-local virtual_world = require("runtime.virtual_world")
-local virtual_async_storage = require("runtime.virtual_async_storage")
+local virtual_world = require("virtual.world")
+local virtual_async_storage = require("virtual.async_storage")
 local multi_storage = require("runtime.multi_storage")
 local errors = require("core.error_codes")
 
@@ -67,3 +67,4 @@ function M.run()
 end
 
 return M
+

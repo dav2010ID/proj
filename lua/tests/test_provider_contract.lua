@@ -1,5 +1,5 @@
 local provider_contract = require("tests.provider_contract")
-local virtual_machine = require("runtime.virtual_machine")
+local virtual_machine = require("virtual.machine")
 
 local M = {}
 
@@ -20,3 +20,4 @@ function M.run()
 end
 
 return M
+

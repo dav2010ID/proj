@@ -1,8 +1,8 @@
 local assert_equal = require("tests.assert").assert_equal
 local utils = require("tests.test_utils")
 local assert_error = utils.assert_error_code
-local virtual_world = require("runtime.virtual_world")
-local virtual_storage = require("runtime.virtual_storage")
+local virtual_world = require("virtual.world")
+local virtual_storage = require("virtual.storage")
 local task_state = require("runtime.task_state")
 local errors = require("core.error_codes")
 
@@ -93,3 +93,4 @@ function M.run()
 end
 
 return M
+

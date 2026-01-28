@@ -1,9 +1,9 @@
 local event_bus = require("runtime.event_bus")
 local machine_manager = require("runtime.machine_manager")
 local machines = require("machines")
-local virtual_storage = require("runtime.virtual_storage")
-local virtual_scheduler = require("runtime.virtual_scheduler")
-local virtual_async_storage = require("runtime.virtual_async_storage")
+local virtual_storage = require("virtual.storage")
+local virtual_scheduler = require("virtual.scheduler")
+local virtual_async_storage = require("virtual.async_storage")
 
 local M = {}
 
@@ -99,3 +99,4 @@ function M.new(initial_stock, opts)
 end
 
 return M
+

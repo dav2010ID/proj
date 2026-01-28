@@ -216,3 +216,4 @@ function M.new(scheduler, initial, latency)
 end
 
 return M
+

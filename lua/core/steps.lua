@@ -38,3 +38,4 @@ function M.craft(recipe, times)
 end
 
 return M
+

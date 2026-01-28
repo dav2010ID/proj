@@ -52,3 +52,4 @@ function M.new(catalog, bus)
 end
 
 return M
+

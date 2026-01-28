@@ -44,3 +44,4 @@ function M.get_producers(registry, item_key)
 end
 
 return M
+

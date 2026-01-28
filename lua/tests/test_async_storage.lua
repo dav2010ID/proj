@@ -3,8 +3,8 @@ local utils = require("tests.test_utils")
 local recipe = require("core.recipe")
 local planner = require("core.planner")
 local executor = require("runtime.executor")
-local virtual_world = require("runtime.virtual_world")
-local virtual_machine = require("runtime.virtual_machine")
+local virtual_world = require("virtual.world")
+local virtual_machine = require("virtual.machine")
 
 local M = {}
 
@@ -55,3 +55,4 @@ function M.run()
 end
 
 return M
+
