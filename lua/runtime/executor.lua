@@ -10,7 +10,9 @@ function M.new(resource_provider, machine_allocator)
     reserved = {},
     produced = {},
     inflight = {},
+    resource_requests = {},
     supply_totals = {},
+    batches_dispatched = false,
   }
 
   -- ExecutionContext contract:
@@ -19,8 +21,15 @@ function M.new(resource_provider, machine_allocator)
   -- - craft is exclusive per machine, allocator controls locks
   -- - context owns transaction boundaries (consume_supplies/commit/rollback)
   function self:execute_supply(step)
-    self.reserved[step.item] = (self.reserved[step.item] or 0) + step.count
-    self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
+    if self.resource.get_batch_async then
+      self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
+    elseif self.resource.get_async then
+      local req_id = self.resource:get_async(step.item, step.count)
+      table.insert(self.resource_requests, { id = req_id, item = step.item, count = step.count })
+    else
+      self.reserved[step.item] = (self.reserved[step.item] or 0) + step.count
+      self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
+    end
   end
 
   local function inputs_available(step)
@@ -102,7 +111,57 @@ function M.new(resource_provider, machine_allocator)
     return progressed
   end
 
+  function self:poll_resource_requests()
+    if not self.resource.poll_request then
+      return false
+    end
+    local progressed = false
+    for i = #self.resource_requests, 1, -1 do
+      local r = self.resource_requests[i]
+      local state = self.resource:poll_request(r.id)
+      if state == task_state.TaskState.RUNNING then
+        -- wait
+      elseif state == task_state.TaskState.FAILED then
+        error({ code = errors.RESOURCE_FAILED, item = r.item })
+      else
+        local result = self.resource:collect_request(r.id)
+        if type(result) == "table" then
+          for item, count in pairs(result) do
+            self.reserved[item] = (self.reserved[item] or 0) + count
+          end
+        else
+          self.reserved[r.item] = (self.reserved[r.item] or 0) + r.count
+        end
+        table.remove(self.resource_requests, i)
+        progressed = true
+      end
+    end
+    return progressed
+  end
+
+  function self:dispatch_supply_batches()
+    if not self.resource.get_batch_async then
+      return
+    end
+    if self.batches_dispatched then
+      return
+    end
+    if next(self.supply_totals) == nil then
+      return
+    end
+    local req_id = self.resource:get_batch_async(self.supply_totals)
+    table.insert(self.resource_requests, { id = req_id, batch = true })
+    self.batches_dispatched = true
+  end
+
   function self:consume_supplies()
+    if self.resource_requests and #self.resource_requests > 0 then
+      return
+    end
+    if self.resource.get_batch_async then
+      self.supply_totals = {}
+      return
+    end
     for item, count in pairs(self.supply_totals) do
       self.resource:consume(item, count)
     end
@@ -117,6 +176,8 @@ function M.new(resource_provider, machine_allocator)
     end
     self.produced = {}
     self.reserved = {}
+    self.resource_requests = {}
+    self.batches_dispatched = false
   end
 
   return self
@@ -164,8 +225,10 @@ local function run_loop(ctx, plan, max_steps_per_tick, task_timeout)
     end
     ready = remaining
 
+    ctx:dispatch_supply_batches()
+    local ok_resources = ctx:poll_resource_requests()
     local ok = ctx:poll_tasks()
-    progressed = progressed or ok
+    progressed = progressed or ok or ok_resources
 
     if task_timeout then
       for _, task in ipairs(ctx.inflight) do
@@ -175,7 +238,7 @@ local function run_loop(ctx, plan, max_steps_per_tick, task_timeout)
       end
     end
 
-    if not progressed and #ctx.inflight == 0 and #ready > 0 then
+    if not progressed and #ctx.inflight == 0 and #ready > 0 and #ctx.resource_requests == 0 then
       error({ code = errors.DEADLOCK })
     end
 

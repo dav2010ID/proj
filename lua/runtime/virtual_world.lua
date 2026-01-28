@@ -3,6 +3,7 @@ local machine_manager = require("runtime.machine_manager")
 local machines = require("machines")
 local virtual_storage = require("runtime.virtual_storage")
 local virtual_scheduler = require("runtime.virtual_scheduler")
+local virtual_async_storage = require("runtime.virtual_async_storage")
 
 local M = {}
 
@@ -12,7 +13,12 @@ function M.new(initial_stock, opts)
   local catalog = machines.new_catalog()
   local manager = machine_manager.new(catalog, bus)
   local scheduler = virtual_scheduler.new(bus)
-  local storage = virtual_storage.new(initial_stock or {}, bus)
+  local storage
+  if opts.async_storage then
+    storage = virtual_async_storage.new(scheduler, initial_stock or {}, opts.storage_delay or 2)
+  else
+    storage = virtual_storage.new(initial_stock or {}, bus)
+  end
 
   bus:subscribe("MachineDetected", function(e) manager:on_machine_detected(e) end)
   bus:subscribe("MachineRemoved", function(e) manager:on_machine_removed(e) end)
@@ -50,6 +56,9 @@ function M.new(initial_stock, opts)
     steps = steps or 1
     for _ = 1, steps do
       self.time = self.time + 1
+      if self.storage.tick then
+        self.storage:tick()
+      end
       self.scheduler:tick()
       self:emit({ type = "Tick", now = self.time })
     end

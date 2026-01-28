@@ -21,6 +21,17 @@ local function compute_reachable(target, recipes_by_output)
   return reachable
 end
 
+local function compute_reachable_many(goals, recipes_by_output)
+  local reachable = {}
+  for _, goal in ipairs(goals) do
+    local sub = compute_reachable(goal.item, recipes_by_output)
+    for k, v in pairs(sub) do
+      reachable[k] = v
+    end
+  end
+  return reachable
+end
+
 local function select_recipe(recipes)
   local best = nil
   for _, recipe in ipairs(recipes) do
@@ -191,6 +202,44 @@ function M.plan(target_item_key, target_count, recipes_by_output, resource_provi
   local ok, err = plan_need(ctx, target_item_key, target_count)
   if not ok then
     return false, err
+  end
+
+  local result = compress_supplies(ctx.plan)
+  result = compress_crafts(result)
+  return true, result
+end
+
+function M.plan_many(goals, recipes_by_output, resource_provider)
+  local reachable = compute_reachable_many(goals, recipes_by_output)
+  local ctx = {
+    resource = resource_provider,
+    recipes = recipes_by_output,
+    reachable = reachable,
+    virtual_stock = {},
+    stock_remaining = {},
+    stack = {},
+    plan = {},
+  }
+
+  if resource_provider.prepare then
+    resource_provider:prepare(reachable)
+  end
+
+  for item, _ in pairs(reachable) do
+    local value = resource_provider:get(item)
+    ctx.virtual_stock[item] = value
+    ctx.stock_remaining[item] = value
+  end
+
+  if resource_provider.snapshot then
+    resource_provider:snapshot()
+  end
+
+  for _, goal in ipairs(goals) do
+    local ok, err = plan_need(ctx, goal.item, goal.count)
+    if not ok then
+      return false, err
+    end
   end
 
   local result = compress_supplies(ctx.plan)

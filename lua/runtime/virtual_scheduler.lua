@@ -7,6 +7,7 @@ function M.new(bus)
     time = 0,
     tasks = {},
     bus = bus,
+    timers = {},
   }
 
   function self:register(handle, duration)
@@ -20,6 +21,14 @@ function M.new(bus)
 
   function self:tick()
     self.time = self.time + 1
+    for i = #self.timers, 1, -1 do
+      local t = self.timers[i]
+      t.remaining = t.remaining - 1
+      if t.remaining <= 0 then
+        table.remove(self.timers, i)
+        t.fn()
+      end
+    end
     for _, handle in pairs(self.tasks) do
       if handle.state == task_state.TaskState.RUNNING then
         handle.remaining = handle.remaining - 1
@@ -31,6 +40,10 @@ function M.new(bus)
         end
       end
     end
+  end
+
+  function self:schedule(delay, fn)
+    table.insert(self.timers, { remaining = delay, fn = fn })
   end
 
   function self:fail(handle, error_message)
