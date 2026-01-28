@@ -1,7 +1,7 @@
 local M = {}
 
 function M.new()
-  local self = { subscribers = {} }
+  local self = { subscribers = {}, on_emit = nil }
 
   function self:subscribe(event_type, handler)
     if not self.subscribers[event_type] then
@@ -11,6 +11,9 @@ function M.new()
   end
 
   function self:emit(event)
+    if self.on_emit then
+      self.on_emit(event)
+    end
     local handlers = self.subscribers[event.type] or {}
     for _, h in ipairs(handlers) do
       h(event)

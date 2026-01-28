@@ -402,9 +402,9 @@ local function test_executor_dependency_order()
       start_c = ev.now
     end
   end
-  assert_equal(start_b ~= nil, true, "make_b started")
-  assert_equal(finish_b ~= nil, true, "make_b finished")
-  assert_equal(start_c ~= nil, true, "make_c started")
+  if start_b == nil or finish_b == nil or start_c == nil then
+    error("missing task events")
+  end
   if start_c <= finish_b then
     error("dependent craft started before output ready")
   end
@@ -490,6 +490,9 @@ local function test_executor_rollback_on_fail()
   local allocator = world:get_allocator()
   local locked = allocator:lock("m")
   assert_equal(locked ~= nil, true, "machine unlocked after failure")
+  if not locked or not locked.id then
+    error("missing locked machine id")
+  end
   allocator:unlock(locked.id)
 end
 

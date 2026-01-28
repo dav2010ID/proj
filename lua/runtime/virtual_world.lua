@@ -40,11 +40,7 @@ function M.new(initial_stock, opts)
     end
   end
 
-  local original_emit = bus.emit
-  function bus:emit(event)
-    record(event)
-    return original_emit(self, event)
-  end
+  self.bus.on_emit = record
 
   function self:emit(event)
     self.bus:emit(event)
@@ -55,7 +51,7 @@ function M.new(initial_stock, opts)
     for _ = 1, steps do
       self.time = self.time + 1
       self.scheduler:tick()
-      self.bus:emit({ type = "Tick", now = self.time })
+      self:emit({ type = "Tick", now = self.time })
     end
   end
 
