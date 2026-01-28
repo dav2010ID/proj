@@ -1,4 +1,4 @@
-local task_state = require("runtime.task_state")
+﻿local task_state = require("runtime.task_state")
 
 local M = {}
 
@@ -127,6 +127,8 @@ local function run_loop(ctx, plan)
     if not progressed and #ctx.inflight == 0 and #ready > 0 then
       error("deadlock")
     end
+
+    coroutine.yield()
   end
 
   ctx:consume_supplies()

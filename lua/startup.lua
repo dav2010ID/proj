@@ -1,4 +1,4 @@
-local log = require("core.log")
+﻿local log = require("core.log")
 local recipe = require("core.recipe")
 local planner = require("core.planner")
 local executor = require("runtime.executor")
@@ -49,14 +49,14 @@ local allocator = world:get_allocator()
 
 local ok, plan_or_err = planner.plan("minecraft:crafting_table", 1, recipes_by_output, resource)
 if not ok then
-  log.error("Plan failed: " .. plan_or_err)
+  log.error(plan_or_err)
   return
 end
 
 local co = coroutine.create(function()
   local exec_ok, err = executor.execute(plan_or_err, resource, allocator)
   if not exec_ok then
-    log.error("Execution failed: " .. err)
+    log.error(err)
   else
     log.info("Execution complete")
   end
@@ -70,7 +70,7 @@ while running do
   end
   local ok_run, err_run = coroutine.resume(co)
   if not ok_run then
-    log.error("Executor crashed: " .. tostring(err_run))
+    log.error(err_run)
     break
   end
   world:tick(1)

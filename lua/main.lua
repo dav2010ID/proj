@@ -1,4 +1,4 @@
-local recipe = require("core.recipe")
+﻿local recipe = require("core.recipe")
 local planner = require("core.planner")
 local executor = require("runtime.executor")
 local machines = require("machines")
@@ -46,13 +46,13 @@ local allocator = machines.new_allocator({
 
 local ok, plan_or_err = planner.plan("minecraft:crafting_table", 1, recipes_by_output, resource)
 if not ok then
-  log.error("Plan failed: " .. plan_or_err)
+  log.error(plan_or_err)
   return
 end
 
 local exec_ok, err = executor.execute(plan_or_err, resource, allocator)
 if not exec_ok then
-  log.error("Execution failed: " .. err)
+  log.error(err)
   return
 end
 
