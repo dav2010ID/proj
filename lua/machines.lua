@@ -1,3 +1,5 @@
+local errors = require("core.error_codes")
+
 local M = {}
 
 function M.new(machine_id, machine_type, provider, state)
@@ -9,8 +11,8 @@ function M.new(machine_id, machine_type, provider, state)
   }
 end
 
-function M.new_allocator(machines)
-  local self = { free = {}, busy = {} }
+function M.new_allocator(machines, bus)
+  local self = { free = {}, busy = {}, bus = bus }
   for _, m in ipairs(machines) do
     self.free[m.id] = m
   end
@@ -21,6 +23,9 @@ function M.new_allocator(machines)
         assert(self.busy[id] == nil)
         self.free[id] = nil
         self.busy[id] = machine
+        if self.bus then
+          self.bus:emit({ type = "MachineLocked", machine_id = id, machine_type = machine.type })
+        end
         return machine
       end
     end
@@ -29,11 +34,14 @@ function M.new_allocator(machines)
 
   function self:unlock(machine_id)
     if not self.busy[machine_id] then
-      error("release_non_busy")
+      error({ code = "UNLOCK_NON_BUSY", machine_id = machine_id })
     end
     local machine = self.busy[machine_id]
     self.busy[machine_id] = nil
     self.free[machine.id] = machine
+    if self.bus then
+      self.bus:emit({ type = "MachineUnlocked", machine_id = machine.id, machine_type = machine.type })
+    end
   end
 
   function self:supports(machine_type)
@@ -98,11 +106,13 @@ function M.new_catalog()
     return items
   end
 
-  function self:build_allocator()
-    return M.new_allocator(self:list_instances())
+  function self:build_allocator(bus)
+    return M.new_allocator(self:list_instances(), bus)
   end
 
   return self
 end
 
 return M
+
+

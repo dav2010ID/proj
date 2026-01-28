@@ -2,8 +2,8 @@ local machines = require("machines")
 
 local M = {}
 
-function M.new(catalog)
-  local self = { catalog = catalog, dirty = false, disabled = {} }
+function M.new(catalog, bus)
+  local self = { catalog = catalog, dirty = false, disabled = {}, bus = bus }
 
   function self:on_machine_detected(event)
     self.catalog:register(event.machine_type, event.provider, event.machine_id)
@@ -37,7 +37,7 @@ function M.new(catalog)
       end
     end
     self.dirty = false
-    return machines.new_allocator(active)
+    return machines.new_allocator(active, self.bus)
   end
 
   function self:cleanup_removed()

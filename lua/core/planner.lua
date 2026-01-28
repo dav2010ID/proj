@@ -1,5 +1,6 @@
 local util = require("core.util")
 local steps = require("core.steps")
+local errors = require("core.error_codes")
 
 local M = {}
 
@@ -90,10 +91,10 @@ end
 local function plan_need(ctx, item, count)
   local key = util.normalize(item)
   if ctx.stack[key] then
-    return false, "cycle"
+    return false, { code = errors.CYCLE_DETECTED }
   end
   if not ctx.reachable[key] then
-    return false, "item_not_reachable"
+    return false, { code = errors.ITEM_NOT_REACHABLE }
   end
 
   local available = ctx.virtual_stock[key]
@@ -105,13 +106,13 @@ local function plan_need(ctx, item, count)
     if from_stock > 0 then
       ctx.stock_remaining[key] = ctx.stock_remaining[key] - from_stock
       if ctx.stock_remaining[key] < 0 then
-        return false, "supply_exceeds_stock"
+        return false, { code = errors.INSUFFICIENT_STOCK }
       end
       table.insert(ctx.plan, steps.supply(key, from_stock))
     end
     ctx.virtual_stock[key] = available - use
     if ctx.virtual_stock[key] < 0 then
-      return false, "virtual_stock_negative"
+      return false, { code = errors.BUFFER_NEGATIVE }
     end
   end
 
@@ -122,7 +123,7 @@ local function plan_need(ctx, item, count)
 
   local recipes = ctx.recipes[key]
   if not recipes or #recipes == 0 then
-    return false, "no_recipe_or_stock"
+    return false, { code = errors.NO_RECIPE_OR_STOCK }
   end
 
   ctx.stack[key] = true
@@ -131,7 +132,7 @@ local function plan_need(ctx, item, count)
   local out = get_output_for_item(recipe, key)
   if not out or out.count <= 0 then
     ctx.stack[key] = nil
-    return false, "no_matching_output"
+    return false, { code = errors.NO_RECIPE_OR_STOCK }
   end
   local times = math.floor((remain + out.count - 1) / out.count)
 
@@ -154,7 +155,7 @@ local function plan_need(ctx, item, count)
   local current = ctx.virtual_stock[key] or 0
   if current - remain < 0 then
     ctx.stack[key] = nil
-    return false, "virtual_stock_negative"
+    return false, { code = errors.BUFFER_NEGATIVE }
   end
   ctx.virtual_stock[key] = current - remain
   ctx.stack[key] = nil
@@ -198,3 +199,6 @@ function M.plan(target_item_key, target_count, recipes_by_output, resource_provi
 end
 
 return M
+
+
+

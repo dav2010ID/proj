@@ -1,4 +1,5 @@
-﻿local task_state = require("runtime.task_state")
+local task_state = require("runtime.task_state")
+local errors = require("core.error_codes")
 
 local M = {}
 
@@ -6,7 +7,8 @@ function M.new(resource_provider, machine_allocator)
   local self = {
     resource = resource_provider,
     allocator = machine_allocator,
-    buffer = {},
+    reserved = {},
+    produced = {},
     inflight = {},
     supply_totals = {},
   }
@@ -17,14 +19,15 @@ function M.new(resource_provider, machine_allocator)
   -- - craft is exclusive per machine, allocator controls locks
   -- - context owns transaction boundaries (consume_supplies/commit/rollback)
   function self:execute_supply(step)
-    self.buffer[step.item] = (self.buffer[step.item] or 0) + step.count
+    self.reserved[step.item] = (self.reserved[step.item] or 0) + step.count
     self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
   end
 
   local function inputs_available(step)
     for _, input in ipairs(step.recipe.inputs) do
       local need = input.count * step.times
-      if (self.buffer[input.item] or 0) < need then
+      local available = (self.reserved[input.item] or 0) + (self.produced[input.item] or 0)
+      if available < need then
         return false
       end
     end
@@ -34,12 +37,23 @@ function M.new(resource_provider, machine_allocator)
   local function consume_inputs(step)
     for _, input in ipairs(step.recipe.inputs) do
       local need = input.count * step.times
-      self.buffer[input.item] = (self.buffer[input.item] or 0) - need
-      assert(self.buffer[input.item] >= 0, "buffer_negative")
+      local reserved = self.reserved[input.item] or 0
+      local from_reserved = math.min(reserved, need)
+      if from_reserved > 0 then
+        self.reserved[input.item] = reserved - from_reserved
+      end
+      local remaining = need - from_reserved
+      if remaining > 0 then
+        local produced = self.produced[input.item] or 0
+        if produced < remaining then
+          error({ code = errors.BUFFER_NEGATIVE, item = input.item, need = need })
+        end
+        self.produced[input.item] = produced - remaining
+      end
     end
   end
 
-  function self:try_start_craft(step)
+  function self:try_start_craft(step, started_tick)
     if not inputs_available(step) then
       return false
     end
@@ -47,9 +61,21 @@ function M.new(resource_provider, machine_allocator)
     if not machine then
       return false
     end
-    local handle = machine.provider:start(step.recipe, step.times)
-    consume_inputs(step)
-    table.insert(self.inflight, { step = step, machine_id = machine.id, provider = machine.provider, handle = handle })
+    local ok, handle_or_err = pcall(function()
+      return machine.provider:start(step.recipe, step.times)
+    end)
+    if not ok then
+      self.allocator:unlock(machine.id)
+      error(handle_or_err)
+    end
+    local ok_consume, consume_err = pcall(function()
+      consume_inputs(step)
+    end)
+    if not ok_consume then
+      self.allocator:unlock(machine.id)
+      error(consume_err)
+    end
+    table.insert(self.inflight, { step = step, machine_id = machine.id, provider = machine.provider, handle = handle_or_err, started_tick = started_tick })
     return true
   end
 
@@ -62,12 +88,11 @@ function M.new(resource_provider, machine_allocator)
         -- continue
       elseif state == task_state.TaskState.FAILED then
         self.allocator:unlock(task.machine_id)
-        error(task.handle.error or "craft_failed")
+        error(task.handle.error or { code = errors.CRAFT_FAILED })
       else
         local outputs = task.provider:collect_outputs(task.handle)
         for item, count in pairs(outputs) do
-          self.buffer[item] = (self.buffer[item] or 0) + count
-          self.resource:add(item, count)
+          self.produced[item] = (self.produced[item] or 0) + count
         end
         self.allocator:unlock(task.machine_id)
         table.remove(self.inflight, i)
@@ -84,39 +109,57 @@ function M.new(resource_provider, machine_allocator)
     self.supply_totals = {}
   end
 
+  function self:apply_outputs()
+    for item, count in pairs(self.produced) do
+      if count > 0 then
+        self.resource:add(item, count)
+      end
+    end
+    self.produced = {}
+    self.reserved = {}
+  end
+
   return self
 end
 
-local function run_loop(ctx, plan)
+local function run_loop(ctx, plan, max_steps_per_tick, task_timeout)
   local ready = {}
   for _, step in ipairs(plan) do
     table.insert(ready, step)
   end
+  local tick = 0
 
   for _, step in ipairs(plan) do
     if step.kind == "craft" then
       if not ctx.allocator:supports_recipe(step.recipe) then
-        error("no_compatible_machine")
+        error({ code = errors.NO_COMPATIBLE_MACHINE })
       end
     end
   end
 
   while #ready > 0 or #ctx.inflight > 0 do
+    tick = tick + 1
     local progressed = false
 
+    local processed = 0
     local remaining = {}
     for _, step in ipairs(ready) do
-      if step.kind == "supply" then
-        ctx:execute_supply(step)
-        progressed = true
-      elseif step.kind == "craft" then
-        if ctx:try_start_craft(step) then
-          progressed = true
-        else
-          table.insert(remaining, step)
-        end
+      if max_steps_per_tick and max_steps_per_tick > 0 and processed >= max_steps_per_tick then
+        table.insert(remaining, step)
       else
-        error("unknown_step")
+        if step.kind == "supply" then
+          ctx:execute_supply(step)
+          progressed = true
+        elseif step.kind == "craft" then
+          if ctx:try_start_craft(step, tick) then
+            progressed = true
+          else
+            table.insert(remaining, step)
+          end
+        else
+          error({ code = errors.UNKNOWN_STEP })
+        end
+        processed = processed + 1
       end
     end
     ready = remaining
@@ -124,24 +167,44 @@ local function run_loop(ctx, plan)
     local ok = ctx:poll_tasks()
     progressed = progressed or ok
 
+    if task_timeout then
+      for _, task in ipairs(ctx.inflight) do
+        if task.started_tick and (tick - task.started_tick) >= task_timeout then
+          error({ code = errors.TASK_TIMEOUT, task_id = task.handle and task.handle.id })
+        end
+      end
+    end
+
     if not progressed and #ctx.inflight == 0 and #ready > 0 then
-      error("deadlock")
+      error({ code = errors.DEADLOCK })
     end
 
     coroutine.yield()
   end
 
   ctx:consume_supplies()
+  ctx:apply_outputs()
 end
 
-function M.execute(plan, resource_provider, machine_allocator)
+function M.execute(plan, resource_provider, machine_allocator, opts)
   local ctx = M.new(resource_provider, machine_allocator)
+  local max_steps_per_tick = opts and opts.max_steps_per_tick or 1
+  local task_timeout = opts and opts.task_timeout
+
+  if resource_provider.begin then
+    resource_provider:begin()
+  end
 
   local ok, err = pcall(function()
-    run_loop(ctx, plan)
+    run_loop(ctx, plan, max_steps_per_tick, task_timeout)
   end)
 
   if not ok then
+    for _, task in ipairs(ctx.inflight) do
+      pcall(function()
+        ctx.allocator:unlock(task.machine_id)
+      end)
+    end
     ctx.resource:rollback()
     return false, err
   end
@@ -151,3 +214,4 @@ function M.execute(plan, resource_provider, machine_allocator)
 end
 
 return M
+

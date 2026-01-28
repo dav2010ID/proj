@@ -6,12 +6,13 @@ local virtual_scheduler = require("runtime.virtual_scheduler")
 
 local M = {}
 
-function M.new(initial_stock)
+function M.new(initial_stock, opts)
+  opts = opts or {}
   local bus = event_bus.new()
   local catalog = machines.new_catalog()
-  local manager = machine_manager.new(catalog)
+  local manager = machine_manager.new(catalog, bus)
   local scheduler = virtual_scheduler.new(bus)
-  local storage = virtual_storage.new(initial_stock or {})
+  local storage = virtual_storage.new(initial_stock or {}, bus)
 
   bus:subscribe("MachineDetected", function(e) manager:on_machine_detected(e) end)
   bus:subscribe("MachineRemoved", function(e) manager:on_machine_removed(e) end)
@@ -25,7 +26,25 @@ function M.new(initial_stock)
     storage = storage,
     manager = manager,
     allocator = nil,
+    trace = {},
+    trace_limit = opts.trace_limit or 200,
   }
+
+  local function record(event)
+    if not event.now then
+      event.now = self.time
+    end
+    table.insert(self.trace, event)
+    if #self.trace > self.trace_limit then
+      table.remove(self.trace, 1)
+    end
+  end
+
+  local original_emit = bus.emit
+  function bus:emit(event)
+    record(event)
+    return original_emit(self, event)
+  end
 
   function self:emit(event)
     self.bus:emit(event)
@@ -61,6 +80,14 @@ function M.new(initial_stock)
       self.allocator = self.manager:build_allocator()
     end
     return self.allocator
+  end
+
+  function self:trace_dump()
+    local copy = {}
+    for i, event in ipairs(self.trace) do
+      copy[i] = event
+    end
+    return copy
   end
 
   return self

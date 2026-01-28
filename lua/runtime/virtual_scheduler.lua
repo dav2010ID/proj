@@ -36,6 +36,9 @@ function M.new(bus)
   function self:fail(handle, error_message)
     handle.state = task_state.TaskState.FAILED
     handle.error = error_message
+    if self.bus then
+      self.bus:emit({ type = "TaskFailed", task_id = handle.id, error = error_message })
+    end
   end
 
   return self

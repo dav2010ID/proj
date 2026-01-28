@@ -1,12 +1,15 @@
 local task_state = require("runtime.task_state")
+local errors = require("core.error_codes")
+
+local global_counter = 0
 
 local M = {}
 
 function M.new(scheduler, opts)
   opts = opts or {}
-  local counter = 0
   local duration = opts.duration or 1
   local auto_advance = opts.auto_advance or false
+  local fail_immediate = opts.fail_immediate or false
 
   return {
     can_craft = function(self, recipe, machine)
@@ -33,18 +36,23 @@ function M.new(scheduler, opts)
       return true
     end,
     start = function(self, recipe, times)
-      counter = counter + 1
+      global_counter = global_counter + 1
       local outputs = {}
       for _, out in ipairs(recipe.outputs) do
         outputs[out.item] = (outputs[out.item] or 0) + out.count * times
       end
       local handle = {
-        id = "virtual:" .. recipe.id .. ":" .. tostring(counter),
+        id = "virtual:" .. recipe.id .. ":" .. tostring(global_counter),
         state = task_state.TaskState.RUNNING,
         outputs = outputs,
         remaining = duration,
+        collected = false,
       }
-      scheduler:register(handle, duration)
+      if fail_immediate then
+        scheduler:fail(handle, { code = errors.CRAFT_FAILED })
+      else
+        scheduler:register(handle, duration)
+      end
       return handle
     end,
     poll = function(self, handle)
@@ -54,9 +62,18 @@ function M.new(scheduler, opts)
       return handle.state
     end,
     collect_outputs = function(self, handle)
+      if handle.state ~= task_state.TaskState.DONE then
+        error({ code = errors.OUTPUTS_NOT_READY, task_id = handle.id })
+      end
+      if handle.collected then
+        error({ code = errors.OUTPUTS_COLLECTED, task_id = handle.id })
+      end
+      handle.collected = true
       return handle.outputs or {}
     end,
   }
 end
 
 return M
+
+
