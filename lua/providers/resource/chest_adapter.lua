@@ -253,12 +253,13 @@ function M.from_periphemu(periphemu, peripheral_api, scheduler, opts)
   end
 
   local input_peripheral = opts.input_peripheral
-  if not input_peripheral and opts.input_name then
-    input_peripheral = peripheral_api.wrap(opts.input_name)
+  local input_name = opts.input_name or opts.buffer_name
+  if not input_peripheral and input_name then
+    input_peripheral = peripheral_api.wrap(input_name)
   end
 
   local adapter_opts = {
-    input_name = opts.input_name,
+    input_name = input_name,
     output_name = opts.output_name,
     buffer_name = opts.buffer_name,
     input_peripheral = input_peripheral,
