@@ -188,9 +188,6 @@ function M.new(peripheral, scheduler, opts)
       items = normalized,
     }
     schedule_request(id, normalized)
-      items = request_map,
-    }
-    schedule_request(id, request_map)
     return id
   end
 
