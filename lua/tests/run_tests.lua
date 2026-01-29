@@ -3,6 +3,8 @@ local here_dir = here:match("^(.*)[/\\]") or "."
 local lua_root = here_dir .. "/.."
 package.path = here_dir .. "/?.lua;" .. lua_root .. "/?.lua;" .. lua_root .. "/?/init.lua;" .. package.path
 
+local M = {}
+
 local log = require("core.log")
 
 local modules = {
@@ -31,9 +33,21 @@ local function run_all()
   end
 end
 
-local ok, err = pcall(run_all)
-if not ok then
-  log.error(err)
-  return
+function M.run()
+  local ok, err = pcall(run_all)
+  if not ok then
+    log.error(err)
+    return
+  end
+  log.info("All virtual tests passed")
+
 end
-log.info("All virtual tests passed")
+
+
+
+
+if ... == nil then
+  M.run()
+end
+
+return M

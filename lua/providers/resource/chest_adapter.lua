@@ -17,8 +17,9 @@ local function build_inventory_index(listing)
   local counts = {}
   local slots = {}
   for slot, entry in pairs(listing or {}) do
-    if entry and entry.name then
-      local key = normalize_item(entry.name)
+    local name = entry and (entry.name or entry.item)
+    if name then
+      local key = normalize_item(name)
       local count = entry.count or 0
       counts[key] = (counts[key] or 0) + count
       slots[key] = slots[key] or {}
@@ -233,6 +234,8 @@ end
 
 function M.from_periphemu(periphemu, peripheral_api, scheduler, opts)
   opts = opts or {}
+  periphemu = _G.periphemu
+  peripheral_api =  _G.peripheral
   if not periphemu then
     error({ code = errors.RESOURCE_FAILED, message = "periphemu is required" })
   end
@@ -243,8 +246,17 @@ function M.from_periphemu(periphemu, peripheral_api, scheduler, opts)
     error({ code = errors.RESOURCE_FAILED, message = "periphemu side is required" })
   end
 
-  local peripheral_type = opts.peripheral_type or "minecraft:chest"
-  periphemu.create(opts.side, peripheral_type)
+  local peripheral_type = opts.peripheral_type or "chest"
+  local periphemu_arg = opts.periphemu_arg
+  local created
+  if periphemu_arg ~= nil then
+    created = periphemu.create(opts.side, peripheral_type, periphemu_arg)
+  else
+    created = periphemu.create(opts.side, peripheral_type)
+  end
+  if created == false then
+    error({ code = errors.RESOURCE_FAILED, message = "periphemu create failed" })
+  end
 
   local chest_name = opts.peripheral_name or opts.side
   local chest = peripheral_api.wrap(chest_name)
@@ -268,6 +280,10 @@ function M.from_periphemu(periphemu, peripheral_api, scheduler, opts)
   }
 
   return M.new(chest, scheduler, adapter_opts)
+end
+
+function M.from_craftos(scheduler, opts)
+  return M.from_periphemu(nil, nil, scheduler, opts)
 end
 
 return M

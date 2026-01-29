@@ -1,8 +1,4 @@
-local app = require("app.startup_app")
-
-if ... == nil then
-  app.run()
-end
-
-return app
-
+local test = require("tests.run_tests")
+test.run()
+print("_-_-_-_-_")
+os.shutdown()

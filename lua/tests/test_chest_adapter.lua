@@ -195,6 +195,7 @@ local function test_chest_adapter_from_periphemu()
     create = function(side, ptype)
       created.side = side
       created.ptype = ptype
+      print("use internnal")
     end,
   }
 
