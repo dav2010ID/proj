@@ -28,6 +28,15 @@ local function build_inventory_index(listing)
   return counts, slots
 end
 
+local function normalize_request_map(request_map)
+  local normalized = {}
+  for item, count in pairs(request_map or {}) do
+    local key = normalize_item(item)
+    normalized[key] = (normalized[key] or 0) + count
+  end
+  return normalized
+end
+
 function M.new(peripheral, scheduler, opts)
   opts = opts or {}
   local input_name = opts.input_name or opts.buffer_name
@@ -171,10 +180,14 @@ function M.new(peripheral, scheduler, opts)
   end
 
   function self:get_batch_async(request_map)
+    local normalized = normalize_request_map(request_map)
     self.counter = self.counter + 1
     local id = "chest_batch_" .. tostring(self.counter)
     self.inflight[id] = {
       state = task_state.TaskState.RUNNING,
+      items = normalized,
+    }
+    schedule_request(id, normalized)
       items = request_map,
     }
     schedule_request(id, request_map)
@@ -219,6 +232,45 @@ function M.new(peripheral, scheduler, opts)
   end
 
   return self
+end
+
+function M.from_periphemu(periphemu, peripheral_api, scheduler, opts)
+  opts = opts or {}
+  if not periphemu then
+    error({ code = errors.RESOURCE_FAILED, message = "periphemu is required" })
+  end
+  if not peripheral_api then
+    error({ code = errors.RESOURCE_FAILED, message = "peripheral api is required" })
+  end
+  if not opts.side then
+    error({ code = errors.RESOURCE_FAILED, message = "periphemu side is required" })
+  end
+
+  local peripheral_type = opts.peripheral_type or "minecraft:chest"
+  periphemu.create(opts.side, peripheral_type)
+
+  local chest_name = opts.peripheral_name or opts.side
+  local chest = peripheral_api.wrap(chest_name)
+  if not chest then
+    error({ code = errors.RESOURCE_FAILED, message = "failed to wrap chest peripheral" })
+  end
+
+  local input_peripheral = opts.input_peripheral
+  local input_name = opts.input_name or opts.buffer_name
+  if not input_peripheral and input_name then
+    input_peripheral = peripheral_api.wrap(input_name)
+  end
+
+  local adapter_opts = {
+    input_name = input_name,
+    output_name = opts.output_name,
+    buffer_name = opts.buffer_name,
+    input_peripheral = input_peripheral,
+    max_items_per_batch = opts.max_items_per_batch,
+    max_total_count = opts.max_total_count,
+  }
+
+  return M.new(chest, scheduler, adapter_opts)
 end
 
 return M

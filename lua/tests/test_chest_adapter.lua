@@ -181,11 +181,49 @@ local function test_chest_adapter_insufficient_stock()
   assert_error(err, errors.REQUEST_NOT_DONE, "request not done")
 end
 
+local function test_chest_adapter_from_periphemu()
+  local registry = {}
+  local chest = new_inventory("left", 9, registry, {
+    [1] = { name = "item:oak", count = 1 },
+  })
+  local buffer = new_inventory("buffer", 9, registry, {})
+  local scheduler = scheduler_module.new()
+  local created = {}
+  local wrapped = {}
+
+  local periphemu = {
+    create = function(side, ptype)
+      created.side = side
+      created.ptype = ptype
+    end,
+  }
+
+  local peripheral_api = {
+    wrap = function(name)
+      wrapped[name] = (wrapped[name] or 0) + 1
+      return registry[name]
+    end,
+  }
+
+  local adapter = chest_adapter.from_periphemu(periphemu, peripheral_api, scheduler, {
+    side = "left",
+    peripheral_type = "minecraft:chest",
+    input_name = buffer.name,
+  })
+
+  assert_equal(created.side, "left", "periphemu side used")
+  assert_equal(created.ptype, "minecraft:chest", "periphemu type used")
+  assert_equal(wrapped.left, 1, "chest wrapped")
+  assert_equal(wrapped.buffer, 1, "input wrapped")
+  assert_equal(adapter:get("item:oak"), 1, "adapter works with periphemu chest")
+end
+
 function M.run()
   test_chest_adapter_get_and_supports()
   test_chest_adapter_batch_pull()
   test_chest_adapter_add_from_buffer()
   test_chest_adapter_insufficient_stock()
+  test_chest_adapter_from_periphemu()
 end
 
 return M
