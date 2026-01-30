@@ -1,4 +1,5 @@
 local errors = require("core.error_codes")
+local log = require("core.log")
 local supply_router = require("runtime.supply_router")
 local util = require("core.util")
 local task_state = require("runtime.task_state")
@@ -137,6 +138,7 @@ function M.new(providers, bus, policy)
       local provider = entry.provider
       local caps = capability.get_capability_limits(provider, "batch")
       local batches = supply_router.split_batches(group.items, caps)
+      log.info("batching storage=" .. tostring(entry.id) .. " requests=" .. tostring(#batches))
       if #batches > 1 then
         self.stats.split_batches = self.stats.split_batches + 1
         emit(events.BatchSplit({
@@ -150,6 +152,7 @@ function M.new(providers, bus, policy)
           local req_id = provider:get_batch_async(batch)
           table.insert(master.requests, { id = req_id, provider = provider, storage_id = entry.id, batch = batch })
           self.stats.total_batches = self.stats.total_batches + 1
+          log.info("batch queued storage=" .. tostring(entry.id) .. " id=" .. tostring(req_id))
           emit(events.BatchQueued({ storage_id = entry.id, batch_id = req_id }))
         else
           local batch_items = 0
@@ -158,6 +161,7 @@ function M.new(providers, bus, policy)
             local req_id = provider:get_async(item, count)
             table.insert(master.requests, { id = req_id, provider = provider, storage_id = entry.id, item = item, count = count })
             self.stats.total_batches = self.stats.total_batches + 1
+            log.info("batch item queued storage=" .. tostring(entry.id) .. " id=" .. tostring(req_id) .. " item=" .. tostring(item) .. " count=" .. tostring(count))
             emit(events.BatchQueued({ storage_id = entry.id, batch_id = req_id }))
           end
           if batch_items > 1 then

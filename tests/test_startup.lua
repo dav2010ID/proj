@@ -13,6 +13,7 @@ local errors = require("core.error_codes")
 
 local M = {}
 
+
 local function map_to_pairs(map)
   local keys = {}
   for k, _ in pairs(map or {}) do
@@ -155,7 +156,7 @@ local function build_craftos_storage(bus, seed_chest_1, seed_chest_2)
   }
 end
 
-local function run_startup(opts)
+local function setup_world(opts)
   opts = opts or {}
   local world = virtual_world.new({})
   local craftos = build_craftos_storage(world.bus, opts.seed_chest_1, opts.seed_chest_2)
@@ -181,35 +182,45 @@ local function run_startup(opts)
   world:attach_machine("furnace", furnace, "f_1")
   world:attach_machine("assembler", assembler, "a_1")
 
+  return world, craftos
+end
+
+local function build_registry()
   local recipe_path = "recipes_startup.json"
   local ok_reg, registry_or_err = recipe.load_registry(recipe_path)
   if not ok_reg then
     error(registry_or_err)
   end
   local registry = registry_or_err
+  return registry
+end
 
+local function run_plan(world)
+  local registry = build_registry()
   local recipes_by_output = recipe.rebuild_index(registry)
   local resource = world.storage
-  local allocator = world:get_allocator()
-
   local ok, graph_or_err =
     planner.plan("minecraft:advanced_machine", 1, recipes_by_output, resource)
 
   if not ok then
-    if not opts.suppress_errors then
-      log.error(plan_or_err)
-    end
     return {
       ok = false,
       err = graph_or_err,
-      craftos = craftos,
-      trace = world:trace_dump(),
     }
   end
   dump_graph(graph_or_err)
 
+  return {
+    ok = true,
+    graph = graph_or_err,
+  }
+end
+
+local function run_executor(world, graph)
+  local resource = world.storage
+  local allocator = world:get_allocator()
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(graph_or_err, resource, allocator, { max_steps_per_tick = 1000 })
+    local exec_ok, err = executor.execute(graph, resource, allocator, { max_steps_per_tick = 1000 })
     if not exec_ok then
       log.error(err)
     else
@@ -237,44 +248,99 @@ local function run_startup(opts)
   return {
     ok = true,
     snapshot = snapshot,
-    craftos = craftos,
     trace = world:trace_dump(),
   }
 end
 
-local function get_first_time(trace, event_type, matcher)
+local function run_startup(opts)
+  opts = opts or {}
+  local world, craftos = setup_world(opts)
+  local plan = run_plan(world)
+  if not plan.ok then
+    if not opts.suppress_errors then
+      log.error(plan.err)
+    end
+    return {
+      ok = false,
+      err = plan.err,
+      craftos = craftos,
+      trace = world:trace_dump(),
+    }
+  end
+  local result = run_executor(world, plan.graph)
+  result.craftos = craftos
+  return result
+end
+
+local function find_time(trace, event_type, matcher, mode)
   for _, ev in ipairs(trace) do
     local payload = ev.payload or {}
     if ev.type == event_type and (not matcher or matcher(payload, ev)) then
-      return ev.now or 0
+      local time = ev.now or 0
+      if mode == "first" then
+        return time
+      end
+      local last = time
+      for i = 1, #trace do
+        if trace[i] == ev then
+          for j = i + 1, #trace do
+            local next_ev = trace[j]
+            local next_payload = next_ev.payload or {}
+            if next_ev.type == event_type and (not matcher or matcher(next_payload, next_ev)) then
+              last = next_ev.now or 0
+            end
+          end
+          break
+        end
+      end
+      return last
     end
   end
   return nil
 end
 
-local function get_last_time(trace, event_type, matcher)
-  local found = nil
-  for _, ev in ipairs(trace) do
-    local payload = ev.payload or {}
-    if ev.type == event_type and (not matcher or matcher(payload, ev)) then
-      found = ev.now or 0
-    end
-  end
-  return found
-end
-
-local function assert_only_in(primary, secondary, items, label)
+local function assert_absent(snapshot, items, label)
   for _, item in ipairs(items) do
-    assert_equal(secondary[item] or 0, 0, label .. " secondary has " .. item)
+    assert_equal(snapshot[item] or 0, 0, label .. " has " .. item)
   end
 end
 
-local function assert_all_zero(snapshot, items, label)
+local function assert_zero(snapshot, items, label)
   for _, item in ipairs(items) do
     assert_equal(snapshot[item] or 0, 0, label .. " has residue " .. item)
   end
 end
 
+local function assert_task_ran(trace, task_id)
+  local started = find_time(trace, "TaskStarted", function(payload)
+    return payload.task_id and string.find(payload.task_id, task_id, 1, true)
+  end, "first")
+  local finished = find_time(trace, "TaskFinished", function(payload)
+    return payload.task_id and string.find(payload.task_id, task_id, 1, true)
+  end, "last")
+  assert_equal(started ~= nil, true, task_id .. " started")
+  assert_equal(finished ~= nil, true, task_id .. " finished")
+  return started, finished
+end
+
+local function assert_task_order(trace, task_id, prereqs)
+  local task_start = find_time(trace, "TaskStarted", function(payload)
+    return payload.task_id and string.find(payload.task_id, task_id, 1, true)
+  end, "first")
+  assert_equal(task_start ~= nil, true, task_id .. " started")
+  if not task_start then
+    return
+  end
+  for _, prereq in ipairs(prereqs or {}) do
+    local prereq_finish = find_time(trace, "TaskFinished", function(payload)
+      return payload.task_id and string.find(payload.task_id, prereq, 1, true)
+    end, "last")
+    assert_equal(prereq_finish ~= nil, true, prereq .. " finished")
+    if prereq_finish then
+      assert_equal(task_start > prereq_finish, true, task_id .. " after " .. prereq)
+    end
+  end
+end
 
 local function test_startup_test_run()
   local result = run_startup()
@@ -285,7 +351,7 @@ local function test_startup_test_run()
   local trace = result.trace or {}
   assert_equal(snapshot["minecraft:advanced_machine"], 1, "advanced_machine")
 
-  assert_all_zero(snapshot, {
+  assert_zero(snapshot, {
     "minecraft:stick",
     "minecraft:furnace",
     "minecraft:iron_ingot",
@@ -304,7 +370,7 @@ local function test_startup_test_run()
     result.craftos.chest_1:commit()
     result.craftos.chest_2:commit()
 
-    assert_only_in(chest_1, chest_2, {
+    assert_absent(chest_2, {
       "minecraft:oak_log",
       "minecraft:oak_planks",
       "minecraft:stick",
@@ -312,7 +378,7 @@ local function test_startup_test_run()
       "minecraft:furnace",
     }, "chest_1")
 
-    assert_only_in(chest_2, chest_1, {
+    assert_absent(chest_1, {
       "minecraft:iron_ore",
       "minecraft:coal",
       "minecraft:iron_ingot",
@@ -324,52 +390,16 @@ local function test_startup_test_run()
       "minecraft:advanced_machine",
     }, "chest_2")
 
-    local smelt_start = get_first_time(trace, "TaskStarted", function(payload)
-      return payload.task_id and string.find(payload.task_id, "smelt_iron", 1, true)
-    end)
-    local smelt_finish = get_last_time(trace, "TaskFinished", function(payload)
-      return payload.task_id and string.find(payload.task_id, "smelt_iron", 1, true)
-    end)
-    assert_equal(smelt_start ~= nil, true, "smelt_iron started")
-    assert_equal(smelt_finish ~= nil, true, "smelt_iron finished")
+    local smelt_start, smelt_finish = assert_task_ran(trace, "smelt_iron")
+    assert_task_ran(trace, "iron_plate")
+    assert_task_ran(trace, "mechanism")
+    assert_task_ran(trace, "machine_casing")
+    assert_task_ran(trace, "furnace")
+    assert_task_order(trace, "advanced_machine", { "machine_casing", "mechanism", "furnace" })
 
-    local iron_plate_start = get_first_time(trace, "TaskStarted", function(payload)
-      return payload.task_id and string.find(payload.task_id, "iron_plate", 1, true)
-    end)
-    local iron_plate_finish = get_last_time(trace, "TaskFinished", function(payload)
-      return payload.task_id and string.find(payload.task_id, "iron_plate", 1, true)
-    end)
-    assert_equal(iron_plate_start ~= nil, true, "iron_plate started")
-    assert_equal(iron_plate_finish ~= nil, true, "iron_plate finished")
-
-    local mechanism_finish = get_last_time(trace, "TaskFinished", function(payload)
-      return payload.task_id and string.find(payload.task_id, "mechanism", 1, true)
-    end)
-    assert_equal(mechanism_finish ~= nil, true, "mechanism finished")
-
-    local casing_finish = get_last_time(trace, "TaskFinished", function(payload)
-      return payload.task_id and string.find(payload.task_id, "machine_casing", 1, true)
-    end)
-    assert_equal(casing_finish ~= nil, true, "machine_casing finished")
-
-    local furnace_finish = get_last_time(trace, "TaskFinished", function(payload)
-      return payload.task_id and string.find(payload.task_id, "furnace", 1, true)
-    end)
-    assert_equal(furnace_finish ~= nil, true, "furnace finished")
-
-    local advanced_start = get_first_time(trace, "TaskStarted", function(payload)
-      return payload.task_id and string.find(payload.task_id, "advanced_machine", 1, true)
-    end)
-    assert_equal(advanced_start ~= nil, true, "advanced_machine started")
-    if advanced_start then
-      assert_equal(advanced_start > casing_finish, true, "advanced_machine after casing")
-      assert_equal(advanced_start > mechanism_finish, true, "advanced_machine after mechanism")
-      assert_equal(advanced_start > furnace_finish, true, "advanced_machine after furnace")
-    end
-
-    local batch_done_chest_2 = get_first_time(trace, "BatchDone", function(payload)
+    local batch_done_chest_2 = find_time(trace, "BatchDone", function(payload)
       return payload.storage_id == "chest_2"
-    end)
+    end, "first")
     if smelt_start and batch_done_chest_2 then
       assert_equal(batch_done_chest_2 <= smelt_start, true, "smelt after supply batch")
     end

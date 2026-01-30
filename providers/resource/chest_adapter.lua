@@ -3,6 +3,7 @@
 local util = require("core.util")
 local errors = require("core.error_codes")
 local task_state = require("runtime.task_state")
+local log = require("core.log")
 
 local M = {}
 
@@ -313,6 +314,7 @@ function M.new(opts)
     end
     self.counter = self.counter + 1
     local id = "batch_" .. tostring(self.counter)
+    log.info("storage batch request storage=" .. tostring(self.side) .. " id=" .. tostring(id))
     for item, count in pairs(request_map) do
       local key = util.normalize(item)
       if self.reachable and not self.reachable[key] then

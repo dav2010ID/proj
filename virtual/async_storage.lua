@@ -3,6 +3,7 @@
 local errors = require("core.error_codes")
 local task_state = require("runtime.task_state")
 local util = require("core.util")
+local log = require("core.log")
 
 local M = {}
 
@@ -131,6 +132,7 @@ function M.new(scheduler, initial, latency)
     end
     self.counter = self.counter + 1
     local id = "batch_" .. tostring(self.counter)
+    log.info("storage batch request storage=virtual_async id=" .. tostring(id))
     local req = {
       items = request_map,
       state = task_state.TaskState.RUNNING,

@@ -4,6 +4,7 @@ local supply_router = require("runtime.supply_router")
 local scheduler = require("runtime.scheduler")
 local capability = require("core.capability")
 local policy_module = require("runtime.policy")
+local log = require("core.log")
 
 local M = {}
 
@@ -17,6 +18,9 @@ function M.new(resource_provider, machine_allocator)
     inflight = {},
     resource_requests = {},
     supply_totals = {},
+    total_supply = {},
+    total_outputs = {},
+    storage_before = {},
     batches_dispatched = false,
   }
 
@@ -26,6 +30,10 @@ function M.new(resource_provider, machine_allocator)
   -- - craft is exclusive per machine, allocator controls locks
   -- - context owns transaction boundaries (consume_supplies/commit/rollback)
   function self:execute_supply(step)
+    if self.storage_before[step.item] == nil then
+      self.storage_before[step.item] = self.resource:get(step.item)
+    end
+    self.total_supply[step.item] = (self.total_supply[step.item] or 0) + step.count
     if self.resource.request then
       if capability.has_capability(self.resource, "batch") then
         self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
@@ -147,6 +155,9 @@ function M.new(resource_provider, machine_allocator)
         end
         for item, count in pairs(outputs) do
           self.produced[item] = (self.produced[item] or 0) + count
+          if self.storage_before[item] == nil then
+            self.storage_before[item] = self.resource:get(item)
+          end
         end
         self.allocator:unlock(task.machine_id)
         table.remove(self.inflight, i)
@@ -236,15 +247,43 @@ function M.new(resource_provider, machine_allocator)
       return
     end
     if self.resource.request and capability.has_capability(self.resource, "batch") then
+      if next(self.supply_totals) then
+        log.info("supply commit (batch handled by storage)")
+        for item, count in pairs(self.supply_totals) do
+          local before = self.storage_before and self.storage_before[item] or nil
+          local after = self.resource:get(item)
+          log.info("supply batch item=" .. tostring(item)
+            .. " total_supply=" .. tostring(count)
+            .. " storage_before=" .. tostring(before)
+            .. " storage_after=" .. tostring(after))
+        end
+      end
       self.supply_totals = {}
       return
     end
     if self.resource.get_batch_async then
+      if next(self.supply_totals) then
+        log.info("supply commit (batch handled by storage)")
+        for item, count in pairs(self.supply_totals) do
+          local before = self.storage_before and self.storage_before[item] or nil
+          local after = self.resource:get(item)
+          log.info("supply batch item=" .. tostring(item)
+            .. " total_supply=" .. tostring(count)
+            .. " storage_before=" .. tostring(before)
+            .. " storage_after=" .. tostring(after))
+        end
+      end
       self.supply_totals = {}
       return
     end
     for item, count in pairs(self.supply_totals) do
+      local before = self.resource:get(item)
       self.resource:consume(item, count)
+      local after = self.resource:get(item)
+      log.info("supply consume item=" .. tostring(item)
+        .. " total_supply=" .. tostring(count)
+        .. " storage_before=" .. tostring(before)
+        .. " storage_after=" .. tostring(after))
     end
     self.supply_totals = {}
   end
@@ -252,7 +291,11 @@ function M.new(resource_provider, machine_allocator)
   function self:apply_outputs()
     for item, count in pairs(self.produced) do
       if count > 0 then
+        if self.storage_before[item] == nil then
+          self.storage_before[item] = self.resource:get(item)
+        end
         self.resource:add(item, count)
+        self.total_outputs[item] = (self.total_outputs[item] or 0) + count
       end
     end
     self.produced = {}
@@ -451,6 +494,37 @@ function M.execute(plan, resource_provider, machine_allocator, opts)
   end
 
   ctx.resource:commit()
+
+  if resource_provider.get then
+    local checked = {}
+    for item, _ in pairs(ctx.storage_before or {}) do
+      checked[item] = true
+    end
+    for item, _ in pairs(ctx.total_supply or {}) do
+      checked[item] = true
+    end
+    for item, _ in pairs(ctx.total_outputs or {}) do
+      checked[item] = true
+    end
+    for item, _ in pairs(checked) do
+      local before = (ctx.storage_before and ctx.storage_before[item]) or 0
+      local supply = ctx.total_supply[item] or 0
+      local outputs = ctx.total_outputs[item] or 0
+      local after = resource_provider:get(item)
+      if after ~= (before - supply + outputs) then
+        error({
+          code = errors.RESOURCE_FAILED,
+          item = item,
+          reason = "storage_invariant",
+          before = before,
+          supply = supply,
+          outputs = outputs,
+          after = after,
+        })
+      end
+    end
+  end
+
   return true, nil
 end
 

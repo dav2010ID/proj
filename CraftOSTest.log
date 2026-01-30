@@ -5,37 +5,67 @@
 [INFO] run tests.test_capability
 [INFO] run tests.test_provider_capabilities
 [INFO] run tests.test_policy
+[INFO] batching storage=s2 requests=1
+[INFO] batch queued storage=s2 id=req1
+[INFO] supply commit (batch handled by storage)
+[INFO] supply batch item=item:a total_supply=1 storage_before=1 storage_after=0
 [INFO] run tests.test_events
 [INFO] run tests.test_event_validator
 [INFO] run tests.test_event_bus
 [INFO] run tests.test_event_flow
 [INFO] run tests.test_executor
+[INFO] supply consume item=item:a total_supply=1 storage_before=1 storage_after=0
+[INFO] supply consume item=item:a total_supply=2 storage_before=2 storage_after=0
+[INFO] supply consume item=item:a total_supply=2 storage_before=2 storage_after=0
+[INFO] supply consume item=item:a total_supply=1 storage_before=1 storage_after=0
 [INFO] run tests.test_executor_graph
+[INFO] supply consume item=item:a total_supply=1 storage_before=1 storage_after=0
 [INFO] run tests.test_storage
+[INFO] storage batch request storage=virtual_async id=batch_1
+[INFO] storage batch request storage=virtual_async id=batch_1
+[INFO] storage batch request storage=virtual_async id=batch_1
 [INFO] run tests.test_async_storage
+[INFO] storage batch request storage=virtual_async id=batch_1
+[INFO] supply commit (batch handled by storage)
+[INFO] supply batch item=item:a total_supply=1 storage_before=1 storage_after=0
 [INFO] run tests.test_async_handle
+[INFO] storage batch request storage=virtual_async id=batch_1
 [INFO] run tests.test_multi_storage
+[INFO] batching storage=s2 requests=1
+[INFO] batch queued storage=s2 id=fail_req
 [INFO] run tests.test_supply_router
 [INFO] run tests.test_scheduler
 [INFO] run tests.test_startup
 [INFO] test_startup:start
 [INFO] PlanGraph:
-[INFO]   #11 supply minecraft:cobblestone x16
+[INFO]   #11 supply minecraft:oak_log x2
+[INFO]     outputs: minecraft:oak_log=2
+[INFO]   #8 craft planks x2
+[INFO]     inputs: minecraft:oak_log=2
+[INFO]     outputs: minecraft:oak_planks=8
+[INFO]     deps: 11
+[INFO]     flows: 11:minecraft:oak_log=2
+[INFO]   #7 craft sticks x1
+[INFO]     inputs: minecraft:oak_planks=2
+[INFO]     outputs: minecraft:stick=4
+[INFO]     deps: 8
+[INFO]     flows: 8:minecraft:oak_planks=2
+[INFO]   #12 supply minecraft:cobblestone x16
 [INFO]     outputs: minecraft:cobblestone=16
 [INFO]   #10 craft furnace x1
 [INFO]     inputs: minecraft:cobblestone=8
 [INFO]     outputs: minecraft:furnace=1
-[INFO]     deps: 11
-[INFO]     flows: 11:minecraft:cobblestone=8
-[INFO]   #12 supply minecraft:coal x13
+[INFO]     deps: 12
+[INFO]     flows: 12:minecraft:cobblestone=8
+[INFO]   #13 supply minecraft:coal x13
 [INFO]     outputs: minecraft:coal=13
-[INFO]   #13 supply minecraft:iron_ore x13
+[INFO]   #14 supply minecraft:iron_ore x13
 [INFO]     outputs: minecraft:iron_ore=13
 [INFO]   #4 craft smelt_iron x13
 [INFO]     inputs: minecraft:coal=13, minecraft:iron_ore=13
 [INFO]     outputs: minecraft:iron_ingot=13
-[INFO]     deps: 12, 13
-[INFO]     flows: 12:minecraft:coal=13, 13:minecraft:iron_ore=13
+[INFO]     deps: 13, 14
+[INFO]     flows: 13:minecraft:coal=13, 14:minecraft:iron_ore=13
 [INFO]   #3 craft iron_plate x4
 [INFO]     inputs: minecraft:iron_ingot=8
 [INFO]     outputs: minecraft:iron_plate=4
@@ -46,18 +76,6 @@
 [INFO]     outputs: minecraft:machine_casing=1
 [INFO]     deps: 3
 [INFO]     flows: 3:minecraft:iron_plate=4
-[INFO]   #14 supply minecraft:oak_log x2
-[INFO]     outputs: minecraft:oak_log=2
-[INFO]   #8 craft planks x2
-[INFO]     inputs: minecraft:oak_log=2
-[INFO]     outputs: minecraft:oak_planks=8
-[INFO]     deps: 14
-[INFO]     flows: 14:minecraft:oak_log=2
-[INFO]   #7 craft sticks x1
-[INFO]     inputs: minecraft:oak_planks=2
-[INFO]     outputs: minecraft:stick=4
-[INFO]     deps: 8
-[INFO]     flows: 8:minecraft:oak_planks=2
 [INFO]   #6 craft iron_gear x2
 [INFO]     inputs: minecraft:iron_ingot=4, minecraft:stick=4
 [INFO]     outputs: minecraft:iron_gear=2
@@ -67,38 +85,51 @@
 [INFO]     inputs: minecraft:iron_ingot=1, minecraft:oak_planks=4
 [INFO]     outputs: minecraft:basic_circuit=1
 [INFO]     deps: 4, 8
-[INFO]     flows: 4:minecraft:iron_ingot=1, 8:minecraft:oak_planks=2
+[INFO]     flows: 8:minecraft:oak_planks=2, 4:minecraft:iron_ingot=1
 [INFO]   #5 craft mechanism x1
 [INFO]     inputs: minecraft:basic_circuit=1, minecraft:iron_gear=2
 [INFO]     outputs: minecraft:mechanism=1
 [INFO]     deps: 6, 9
-[INFO]     flows: 6:minecraft:iron_gear=2, 9:minecraft:basic_circuit=1
+[INFO]     flows: 9:minecraft:basic_circuit=1, 6:minecraft:iron_gear=2
 [INFO]   #1 craft advanced_machine x1
 [INFO]     inputs: minecraft:cobblestone=8, minecraft:furnace=1, minecraft:machine_casing=1, minecraft:mechanism=1
 [INFO]     outputs: minecraft:advanced_machine=1
-[INFO]     deps: 2, 5, 10, 11
-[INFO]     flows: 10:minecraft:furnace=1, 11:minecraft:cobblestone=8, 5:minecraft:mechanism=1, 2:minecraft:machine_casing=1
+[INFO]     deps: 2, 5, 10, 12
+[INFO]     flows: 12:minecraft:cobblestone=8, 5:minecraft:mechanism=1, 10:minecraft:furnace=1, 2:minecraft:machine_casing=1
+[INFO] batching storage=chest_1 requests=1
+[INFO] storage batch request storage=front id=batch_1
+[INFO] batch queued storage=chest_1 id=batch_1
+[INFO] batching storage=chest_2 requests=1
+[INFO] storage batch request storage=back id=batch_1
+[INFO] batch queued storage=chest_2 id=batch_1
+[INFO] supply commit (batch handled by storage)
+[INFO] supply batch item=minecraft:oak_log total_supply=2 storage_before=8 storage_after=6
+[INFO] supply batch item=minecraft:cobblestone total_supply=16 storage_before=16 storage_after=0
+[INFO] supply batch item=minecraft:iron_ore total_supply=13 storage_before=13 storage_after=0
+[INFO] supply batch item=minecraft:coal total_supply=13 storage_before=13 storage_after=0
 [INFO] Execution complete
 [INFO] Final stock:
-[INFO]   minecraft:advanced_machine = 1
-[INFO]   minecraft:mechanism = 0
-[INFO]   minecraft:machine_casing = 0
-[INFO]   minecraft:oak_log = 6
-[INFO]   minecraft:cobblestone = 0
-[INFO]   minecraft:coal = 0
-[INFO]   minecraft:furnace = 0
-[INFO]   minecraft:iron_plate = 0
-[INFO]   minecraft:oak_planks = 2
-[INFO]   minecraft:iron_ingot = 0
 [INFO]   minecraft:iron_gear = 0
-[INFO]   minecraft:iron_ore = 0
-[INFO]   minecraft:basic_circuit = 0
+[INFO]   minecraft:cobblestone = 0
+[INFO]   minecraft:iron_plate = 0
+[INFO]   minecraft:oak_log = 6
+[INFO]   minecraft:oak_planks = 2
+[INFO]   minecraft:machine_casing = 0
+[INFO]   minecraft:advanced_machine = 1
 [INFO]   minecraft:stick = 0
+[INFO]   minecraft:basic_circuit = 0
+[INFO]   minecraft:iron_ore = 0
+[INFO]   minecraft:iron_ingot = 0
+[INFO]   minecraft:furnace = 0
+[INFO]   minecraft:mechanism = 0
+[INFO]   minecraft:coal = 0
 [INFO] test_startup:done
 [INFO] run tests.test_provider_contract
 [INFO] provider_contract_start
 [INFO] provider_contract_ok
 [INFO] run tests.test_parallel_goals
+[INFO] supply consume item=minecraft:oak_log total_supply=2 storage_before=2 storage_after=0
+[INFO] supply consume item=minecraft:cobblestone total_supply=8 storage_before=8 storage_after=0
 [INFO] run tests.test_chest_adapter
 [INFO] tests:done
 [INFO] All virtual tests passed
