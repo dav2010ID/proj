@@ -12,13 +12,22 @@ local function sort_keys(map)
 end
 
 local function capacity_limits(cap)
+  local max_items = cap and cap.max_items_per_batch or math.huge
+  local max_total = cap and cap.max_total_count or math.huge
+  if max_items <= 0 or max_total <= 0 then
+    error({ code = errors.BATCH_TOO_LARGE })
+  end
   return {
-    max_items = cap and cap.max_items_per_batch or nil,
-    max_total = cap and cap.max_total_count or nil,
+    max_items = max_items,
+    max_total = max_total,
   }
 end
 
 -- Returns list of batch maps for one storage.
+-- Semantics:
+-- - max_items_per_batch limits unique item keys in a batch.
+-- - max_total_count limits total count across all items.
+-- - A single item may be split across multiple batches if needed.
 function M.split_batches(request_map, cap)
   local limits = capacity_limits(cap)
   local keys = sort_keys(request_map)
@@ -38,20 +47,20 @@ function M.split_batches(request_map, cap)
 
   for _, item in ipairs(keys) do
     local remaining = request_map[item]
+    if type(remaining) ~= "number" or remaining <= 0 then
+      error({ code = errors.NEGATIVE_COUNT, item = item, count = remaining })
+    end
     while remaining > 0 do
-      local take = remaining
-      if limits.max_total then
-        local available = limits.max_total - current_total
-        if available <= 0 then
-          flush()
-          available = limits.max_total
-        end
-        if take > available then
-          take = available
-        end
+      -- Determine how much we can take into the current batch.
+      local available = limits.max_total - current_total
+      if available <= 0 then
+        flush()
+        available = limits.max_total
       end
+      local take = math.min(remaining, available)
 
-      if limits.max_items and current_items >= limits.max_items and (current[item] == nil) then
+      -- Enforce max unique items per batch.
+      if current_items >= limits.max_items and (current[item] == nil) then
         flush()
       end
 
@@ -66,12 +75,8 @@ function M.split_batches(request_map, cap)
       current_total = current_total + take
       remaining = remaining - take
 
-      if limits.max_total and current_total >= limits.max_total then
+      if current_total >= limits.max_total then
         flush()
-      end
-      if limits.max_items and current_items >= limits.max_items then
-        -- flush only if another distinct item remains
-        -- in this loop, remaining might be > 0 for same item; keep in same batch if possible
       end
     end
   end

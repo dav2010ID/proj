@@ -1,3 +1,5 @@
+-- ChestResourceProvider + InventoryAdapter
+-- Test-support implementation, not core business logic.
 local util = require("core.util")
 local errors = require("core.error_codes")
 local task_state = require("runtime.task_state")
@@ -22,6 +24,7 @@ end
 function M.new(opts)
   opts = opts or {}
   local side = opts.side or "front"
+  local max_stack = opts.max_stack
   local create = opts.create
   if create == nil then
     create = true
@@ -54,6 +57,8 @@ function M.new(opts)
     delta_minus = {},
     delta_plus = {},
     snapshot_taken = false,
+    snapshot_keys = nil,
+    in_txn = false,
     reachable = nil,
     slot_snapshot = nil,
     allowlist = opts.allowlist,
@@ -62,6 +67,7 @@ function M.new(opts)
   }
 
   local function refresh()
+    -- Refresh is only used during prepare (explicit sync with peripheral).
     local list = chest.list() or {}
     local stock = {}
     local slots = {}
@@ -111,17 +117,31 @@ function M.new(opts)
     for slot = 1, size do
       local entry = self.slots[slot]
       if entry and entry.key == item then
-        set_slot(slot, item, entry.count + remaining)
-        remaining = 0
-        break
+        local can_take = remaining
+        if max_stack and max_stack > 0 then
+          can_take = math.min(remaining, math.max(0, max_stack - entry.count))
+        end
+        if can_take > 0 then
+          set_slot(slot, item, entry.count + can_take)
+          remaining = remaining - can_take
+        end
+        if remaining <= 0 then
+          break
+        end
       end
     end
     if remaining > 0 then
       for slot = 1, size do
         if not self.slots[slot] then
-          set_slot(slot, item, remaining)
-          remaining = 0
-          break
+          local can_take = remaining
+          if max_stack and max_stack > 0 then
+            can_take = math.min(remaining, max_stack)
+          end
+          set_slot(slot, item, can_take)
+          remaining = remaining - can_take
+          if remaining <= 0 then
+            break
+          end
         end
       end
     end
@@ -138,21 +158,31 @@ function M.new(opts)
   end
 
   function self:prepare(reachable)
+    if self.in_txn then
+      error({ code = errors.TXN_ALREADY_ACTIVE })
+    end
     self.reachable = {}
     for item, _ in pairs(reachable) do
       self.reachable[util.normalize(item)] = true
     end
     self.snapshot_taken = false
+    self.snapshot_keys = nil
     self.delta_minus = {}
     self.delta_plus = {}
     refresh()
   end
 
   function self:begin()
+    if self.in_txn then
+      error({ code = errors.TXN_ALREADY_ACTIVE })
+    end
+    self.in_txn = true
     self.snapshot_taken = false
+    self.snapshot_keys = nil
     self.delta_minus = {}
     self.delta_plus = {}
     self.slot_snapshot = copy_slots(self.slots)
+    self.inflight = {}
   end
 
   function self:get(item)
@@ -160,7 +190,7 @@ function M.new(opts)
     if self.reachable and not self.reachable[key] then
       error({ code = errors.ITEM_NOT_REACHABLE, item = key })
     end
-    if self.snapshot_taken and self.stock[key] == nil then
+    if self.snapshot_taken and (not self.snapshot_keys or not self.snapshot_keys[key]) then
       error({ code = errors.GET_AFTER_SNAPSHOT, item = key })
     end
     if self.stock[key] == nil then
@@ -203,19 +233,29 @@ function M.new(opts)
   end
 
   function self:commit()
+    if not self.in_txn then
+      error({ code = errors.TXN_NOT_ACTIVE })
+    end
     self.delta_minus = {}
     self.delta_plus = {}
     self.snapshot_taken = false
+    self.snapshot_keys = nil
     self.slot_snapshot = nil
     self.inflight = {}
+    self.in_txn = false
   end
 
   function self:rollback()
+    if not self.in_txn then
+      error({ code = errors.TXN_NOT_ACTIVE })
+    end
     if not self.slot_snapshot then
-      refresh()
+      -- Rollback uses snapshot only; no peripheral refresh here.
       self.delta_minus = {}
       self.delta_plus = {}
       self.snapshot_taken = false
+      self.snapshot_keys = nil
+      self.in_txn = false
       return
     end
     local stock = {}
@@ -233,8 +273,10 @@ function M.new(opts)
     self.delta_minus = {}
     self.delta_plus = {}
     self.snapshot_taken = false
+    self.snapshot_keys = nil
     self.slot_snapshot = nil
     self.inflight = {}
+    self.in_txn = false
   end
 
   function self:get_async(item, count)
@@ -325,14 +367,20 @@ function M.new(opts)
   end
 
   function self:snapshot()
+    if not self.in_txn then
+      error({ code = errors.SNAPSHOT_REQUIRES_BEGIN })
+    end
     if self.snapshot_taken then
       error({ code = errors.SNAPSHOT_TAKEN })
     end
     self.snapshot_taken = true
+    local keys = {}
     local copy = {}
     for k, v in pairs(self.stock) do
       copy[k] = v
+      keys[k] = true
     end
+    self.snapshot_keys = keys
     return copy
   end
 

@@ -60,7 +60,9 @@ local function test_chest_adapter_rollback()
   adapter:add(item, 1)
   adapter:rollback()
 
+  adapter:begin()
   local snap = adapter:snapshot()
+  adapter:commit()
   assert_equal(snap[item] or 0, expected[item] or 0, "rollback restores chest contents")
 
   cleanup_side(side)
@@ -84,12 +86,14 @@ local function test_chest_adapter_snapshot_freeze()
 
   adapter:prepare({ [item] = true })
   adapter:get(item)
+  adapter:begin()
   adapter:snapshot()
   local ok, err = pcall(function()
     adapter:consume(item, 1)
   end)
   assert_equal(ok, false, "consume after snapshot should fail")
   assert_error(err, errors.MUTATE_AFTER_SNAPSHOT, "mutate after snapshot")
+  adapter:commit()
 
   cleanup_side(side)
 end
