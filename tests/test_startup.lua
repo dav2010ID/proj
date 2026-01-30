@@ -263,7 +263,9 @@ local function run_startup(opts)
     world:tick(1)
   end
 
+  resource:begin()
   local snapshot = resource:snapshot()
+  resource:commit()
   log.info("Final stock:")
   for k, v in pairs(snapshot) do
     log.info("  " .. k .. " = " .. tostring(v))
@@ -279,7 +281,8 @@ end
 
 local function get_first_time(trace, event_type, matcher)
   for _, ev in ipairs(trace) do
-    if ev.type == event_type and (not matcher or matcher(ev)) then
+    local payload = ev.payload or {}
+    if ev.type == event_type and (not matcher or matcher(payload, ev)) then
       return ev.now or 0
     end
   end
@@ -289,7 +292,8 @@ end
 local function get_last_time(trace, event_type, matcher)
   local found = nil
   for _, ev in ipairs(trace) do
-    if ev.type == event_type and (not matcher or matcher(ev)) then
+    local payload = ev.payload or {}
+    if ev.type == event_type and (not matcher or matcher(payload, ev)) then
       found = ev.now or 0
     end
   end
@@ -334,6 +338,8 @@ local function test_startup_test_run()
     result.craftos.chest_2:begin()
     local chest_1 = result.craftos.chest_1:snapshot()
     local chest_2 = result.craftos.chest_2:snapshot()
+    result.craftos.chest_1:commit()
+    result.craftos.chest_2:commit()
 
     assert_only_in(chest_1, chest_2, {
       "minecraft:oak_log",
@@ -355,41 +361,41 @@ local function test_startup_test_run()
       "minecraft:advanced_machine",
     }, "chest_2")
 
-    local smelt_start = get_first_time(trace, "TaskStarted", function(e)
-      return e.task_id and string.find(e.task_id, "smelt_iron", 1, true)
+    local smelt_start = get_first_time(trace, "TaskStarted", function(payload)
+      return payload.task_id and string.find(payload.task_id, "smelt_iron", 1, true)
     end)
-    local smelt_finish = get_last_time(trace, "TaskFinished", function(e)
-      return e.task_id and string.find(e.task_id, "smelt_iron", 1, true)
+    local smelt_finish = get_last_time(trace, "TaskFinished", function(payload)
+      return payload.task_id and string.find(payload.task_id, "smelt_iron", 1, true)
     end)
     assert_equal(smelt_start ~= nil, true, "smelt_iron started")
     assert_equal(smelt_finish ~= nil, true, "smelt_iron finished")
 
-    local iron_plate_start = get_first_time(trace, "TaskStarted", function(e)
-      return e.task_id and string.find(e.task_id, "iron_plate", 1, true)
+    local iron_plate_start = get_first_time(trace, "TaskStarted", function(payload)
+      return payload.task_id and string.find(payload.task_id, "iron_plate", 1, true)
     end)
-    local iron_plate_finish = get_last_time(trace, "TaskFinished", function(e)
-      return e.task_id and string.find(e.task_id, "iron_plate", 1, true)
+    local iron_plate_finish = get_last_time(trace, "TaskFinished", function(payload)
+      return payload.task_id and string.find(payload.task_id, "iron_plate", 1, true)
     end)
     assert_equal(iron_plate_start ~= nil, true, "iron_plate started")
     assert_equal(iron_plate_finish ~= nil, true, "iron_plate finished")
 
-    local mechanism_finish = get_last_time(trace, "TaskFinished", function(e)
-      return e.task_id and string.find(e.task_id, "mechanism", 1, true)
+    local mechanism_finish = get_last_time(trace, "TaskFinished", function(payload)
+      return payload.task_id and string.find(payload.task_id, "mechanism", 1, true)
     end)
     assert_equal(mechanism_finish ~= nil, true, "mechanism finished")
 
-    local casing_finish = get_last_time(trace, "TaskFinished", function(e)
-      return e.task_id and string.find(e.task_id, "machine_casing", 1, true)
+    local casing_finish = get_last_time(trace, "TaskFinished", function(payload)
+      return payload.task_id and string.find(payload.task_id, "machine_casing", 1, true)
     end)
     assert_equal(casing_finish ~= nil, true, "machine_casing finished")
 
-    local furnace_finish = get_last_time(trace, "TaskFinished", function(e)
-      return e.task_id and string.find(e.task_id, "furnace", 1, true)
+    local furnace_finish = get_last_time(trace, "TaskFinished", function(payload)
+      return payload.task_id and string.find(payload.task_id, "furnace", 1, true)
     end)
     assert_equal(furnace_finish ~= nil, true, "furnace finished")
 
-    local advanced_start = get_first_time(trace, "TaskStarted", function(e)
-      return e.task_id and string.find(e.task_id, "advanced_machine", 1, true)
+    local advanced_start = get_first_time(trace, "TaskStarted", function(payload)
+      return payload.task_id and string.find(payload.task_id, "advanced_machine", 1, true)
     end)
     assert_equal(advanced_start ~= nil, true, "advanced_machine started")
     if advanced_start then
@@ -398,8 +404,8 @@ local function test_startup_test_run()
       assert_equal(advanced_start > furnace_finish, true, "advanced_machine after furnace")
     end
 
-    local batch_done_chest_2 = get_first_time(trace, "BatchDone", function(e)
-      return e.storage_id == "chest_2"
+    local batch_done_chest_2 = get_first_time(trace, "BatchDone", function(payload)
+      return payload.storage_id == "chest_2"
     end)
     if smelt_start and batch_done_chest_2 then
       assert_equal(batch_done_chest_2 <= smelt_start, true, "smelt after supply batch")
@@ -407,7 +413,8 @@ local function test_startup_test_run()
 
     local parallel_ok = false
     for _, ev in ipairs(trace) do
-      if ev.type == "TaskStarted" and ev.task_id and (string.find(ev.task_id, "planks", 1, true) or string.find(ev.task_id, "sticks", 1, true)) then
+      local payload = ev.payload or {}
+      if ev.type == "TaskStarted" and payload.task_id and (string.find(payload.task_id, "planks", 1, true) or string.find(payload.task_id, "sticks", 1, true)) then
         if smelt_start and smelt_finish and ev.now >= smelt_start and ev.now <= smelt_finish then
           parallel_ok = true
           break

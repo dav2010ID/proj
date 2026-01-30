@@ -33,6 +33,13 @@ function M.new(resource_provider, machine_allocator)
     end
   end
 
+  function self:execute_craft(step, started_tick)
+    local ok = self:try_start_craft(step, started_tick or 0)
+    if not ok then
+      error({ code = errors.DEADLOCK })
+    end
+  end
+
   local function inputs_available(step)
     for _, input in ipairs(step.recipe.inputs) do
       local need = input.count * step.times

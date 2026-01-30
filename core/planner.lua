@@ -188,6 +188,11 @@ function M.plan(target_item_key, target_count, recipes_by_output, resource_provi
   if resource_provider.prepare then
     resource_provider:prepare(reachable)
   end
+  local began = false
+  if resource_provider.begin then
+    resource_provider:begin()
+    began = true
+  end
 
   for item, _ in pairs(reachable) do
     local value = resource_provider:get(item)
@@ -201,7 +206,16 @@ function M.plan(target_item_key, target_count, recipes_by_output, resource_provi
 
   local ok, err = plan_need(ctx, target_item_key, target_count)
   if not ok then
+    if began and resource_provider.rollback then
+      resource_provider:rollback()
+    elseif began and resource_provider.commit then
+      resource_provider:commit()
+    end
     return false, err
+  end
+
+  if began and resource_provider.commit then
+    resource_provider:commit()
   end
 
   local result = compress_supplies(ctx.plan)
@@ -224,6 +238,11 @@ function M.plan_many(goals, recipes_by_output, resource_provider)
   if resource_provider.prepare then
     resource_provider:prepare(reachable)
   end
+  local began = false
+  if resource_provider.begin then
+    resource_provider:begin()
+    began = true
+  end
 
   for item, _ in pairs(reachable) do
     local value = resource_provider:get(item)
@@ -238,8 +257,17 @@ function M.plan_many(goals, recipes_by_output, resource_provider)
   for _, goal in ipairs(goals) do
     local ok, err = plan_need(ctx, goal.item, goal.count)
     if not ok then
+      if began and resource_provider.rollback then
+        resource_provider:rollback()
+      elseif began and resource_provider.commit then
+        resource_provider:commit()
+      end
       return false, err
     end
+  end
+
+  if began and resource_provider.commit then
+    resource_provider:commit()
   end
 
   local result = compress_supplies(ctx.plan)

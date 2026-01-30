@@ -34,7 +34,9 @@ local function test_executor_success()
     end
   end)
   run_coroutine(world, co, 20)
+  world.storage:begin()
   local snap = world.storage:snapshot()
+  world.storage:commit()
   assert_equal(snap["item:a"], 0, "item:a consumed")
   assert_equal(snap["item:b"], 1, "item:b produced")
 end
@@ -221,11 +223,12 @@ local function test_executor_dependency_order()
   run_coroutine(world, co, 50)
   local start_b, finish_b, start_c
   for _, ev in ipairs(world:trace_dump()) do
-    if ev.type == "TaskStarted" and ev.task_id and string.find(ev.task_id, "make_b", 1, true) then
+    local payload = ev.payload or {}
+    if ev.type == "TaskStarted" and payload.task_id and string.find(payload.task_id, "make_b", 1, true) then
       start_b = ev.now
-    elseif ev.type == "TaskFinished" and ev.task_id and string.find(ev.task_id, "make_b", 1, true) then
+    elseif ev.type == "TaskFinished" and payload.task_id and string.find(payload.task_id, "make_b", 1, true) then
       finish_b = ev.now
-    elseif ev.type == "TaskStarted" and ev.task_id and string.find(ev.task_id, "make_c", 1, true) then
+    elseif ev.type == "TaskStarted" and payload.task_id and string.find(payload.task_id, "make_c", 1, true) then
       start_c = ev.now
     end
   end
@@ -261,7 +264,9 @@ local function test_executor_rollback_on_fail()
     assert_error(err, errors.CRAFT_FAILED, "craft failed")
   end)
   run_coroutine(world, co, 20)
+  world.storage:begin()
   local snap = world.storage:snapshot()
+  world.storage:commit()
   assert_equal(snap["item:a"], 1, "rollback restores item:a")
   assert_equal(snap["item:b"] or 0, 0, "rollback restores item:b")
   local allocator = world:get_allocator()

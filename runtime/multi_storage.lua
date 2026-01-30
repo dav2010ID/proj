@@ -142,21 +142,30 @@ function M.new(providers, bus)
         })
       end
       for _, batch in ipairs(batches) do
-      local req_id
         if provider.get_batch_async then
-          req_id = provider:get_batch_async(batch)
+          local req_id = provider:get_batch_async(batch)
+          table.insert(master.requests, { id = req_id, provider = provider, storage_id = entry.id, batch = batch })
+          self.stats.total_batches = self.stats.total_batches + 1
+          emit({ type = "BatchQueued", storage_id = entry.id, batch_id = req_id })
         else
-          local only_item, only_count
+          local batch_items = 0
           for item, count in pairs(batch) do
-            only_item = item
-            only_count = count
-            break
+            batch_items = batch_items + 1
+            local req_id = provider:get_async(item, count)
+            table.insert(master.requests, { id = req_id, provider = provider, storage_id = entry.id, item = item, count = count })
+            self.stats.total_batches = self.stats.total_batches + 1
+            emit({ type = "BatchQueued", storage_id = entry.id, batch_id = req_id })
           end
-          req_id = provider:get_async(only_item, only_count)
+          if batch_items > 1 then
+            self.stats.split_batches = self.stats.split_batches + 1
+            emit({
+              type = "BatchSplit",
+              storage_id = entry.id,
+              original_size = batch,
+              batches_count = batch_items,
+            })
+          end
         end
-        table.insert(master.requests, { id = req_id, provider = provider, storage_id = entry.id, batch = batch })
-        self.stats.total_batches = self.stats.total_batches + 1
-        emit({ type = "BatchQueued", storage_id = entry.id, batch_id = req_id })
       end
     end
 
@@ -201,10 +210,12 @@ function M.new(providers, bus)
           result[item] = (result[item] or 0) + count
         end
       else
-        local only_item
-        for item, _ in pairs(sub.batch or {}) do
-          only_item = item
-          break
+        local only_item = sub.item
+        if not only_item then
+          for item, _ in pairs(sub.batch or {}) do
+            only_item = item
+            break
+          end
         end
         if only_item then
           result[only_item] = (result[only_item] or 0) + out

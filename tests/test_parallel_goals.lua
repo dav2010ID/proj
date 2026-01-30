@@ -69,7 +69,9 @@ local function test_parallel_goals()
 
   utils.run_coroutine(world, co, 50)
 
+  resource:begin()
   local snapshot = resource:snapshot()
+  resource:commit()
   assert_equal(snapshot["minecraft:crafting_table"], 1, "crafting_table missing")
   assert_equal(snapshot["minecraft:furnace"], 1, "furnace missing")
   assert_equal(snapshot["minecraft:oak_log"], 0, "oak_log not fully consumed")

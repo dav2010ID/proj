@@ -78,7 +78,9 @@ function M.run()
     world:tick(1)
   end
 
+  resource:begin()
   local snapshot = resource:snapshot()
+  resource:commit()
   log.info("Final stock:")
   for k, v in pairs(snapshot) do
     log.info("  " .. k .. " = " .. tostring(v))

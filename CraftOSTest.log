@@ -9,20 +9,20 @@
 [INFO] test_startup:start
 [INFO] Execution complete
 [INFO] Final stock:
-[INFO]   minecraft:mechanism = 0
-[INFO]   minecraft:stick = 0
-[INFO]   minecraft:iron_gear = 0
-[INFO]   minecraft:basic_circuit = 0
-[INFO]   minecraft:iron_ore = 0
-[INFO]   minecraft:oak_planks = 2
-[INFO]   minecraft:iron_ingot = 0
-[INFO]   minecraft:machine_casing = 0
-[INFO]   minecraft:oak_log = 6
-[INFO]   minecraft:iron_plate = 0
 [INFO]   minecraft:furnace = 0
-[INFO]   minecraft:coal = 0
-[INFO]   minecraft:advanced_machine = 1
+[INFO]   minecraft:iron_ore = 0
+[INFO]   minecraft:machine_casing = 0
 [INFO]   minecraft:cobblestone = 8
+[INFO]   minecraft:stick = 0
+[INFO]   minecraft:iron_plate = 0
+[INFO]   minecraft:oak_planks = 2
+[INFO]   minecraft:basic_circuit = 0
+[INFO]   minecraft:iron_ingot = 0
+[INFO]   minecraft:iron_gear = 0
+[INFO]   minecraft:advanced_machine = 1
+[INFO]   minecraft:oak_log = 6
+[INFO]   minecraft:mechanism = 0
+[INFO]   minecraft:coal = 0
 [INFO] test_startup:done
 [INFO] run tests.test_provider_contract
 [INFO] provider_contract_start

@@ -1,3 +1,5 @@
+-- TEST SUPPORT CODE
+-- Not used in production.
 local task_state = require("runtime.task_state")
 local errors = require("core.error_codes")
 

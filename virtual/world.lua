@@ -1,6 +1,9 @@
+-- TEST SUPPORT CODE
+-- Not used in production.
 local event_bus = require("runtime.event_bus")
 local machine_manager = require("runtime.machine_manager")
 local storage_manager = require("runtime.storage_manager")
+local multi_storage = require("runtime.multi_storage")
 local machines = require("machines")
 local virtual_storage = require("virtual.storage")
 local virtual_scheduler = require("virtual.scheduler")
@@ -39,15 +42,22 @@ function M.new(initial_stock, opts)
     manager = manager,
     storage_manager = storage_mgr,
     allocator = nil,
+    storage_entries = {},
+    storage_disabled = {},
+    legacy_storage_attached = false,
     trace = {},
     trace_limit = opts.trace_limit or 200,
   }
 
   local function record(event)
-    if not event.now then
-      event.now = self.time
+    local now = event.now or self.time
+    local payload = {}
+    for k, v in pairs(event) do
+      if k ~= "now" and k ~= "type" then
+        payload[k] = v
+      end
     end
-    table.insert(self.trace, event)
+    table.insert(self.trace, { type = event.type, now = now, payload = payload })
     if #self.trace > self.trace_limit then
       table.remove(self.trace, 1)
     end
@@ -63,55 +73,167 @@ function M.new(initial_stock, opts)
     steps = steps or 1
     for _ = 1, steps do
       self.time = self.time + 1
-      if self.storage.tick then
-        self.storage:tick()
-      end
       self.scheduler:tick()
       self:emit({ type = "Tick", now = self.time })
     end
   end
 
   function self:attach_machine(machine_type, provider, machine_id)
+    if self.manager.catalog.instances[machine_id] then
+      error("machine already attached: " .. tostring(machine_id))
+    end
     self:emit({ type = "MachineDetected", machine_type = machine_type, provider = provider, machine_id = machine_id })
   end
 
-  function self:attach_storage(storage)
-    self:emit({ type = "StorageDetected", provider = storage })
+  local function build_storage_provider()
+    local active = {}
+    for id, entry in pairs(self.storage_entries) do
+      if not self.storage_disabled[id] then
+        table.insert(active, { id = id, provider = entry.provider })
+      end
+    end
+    if #active == 0 then
+      return nil
+    end
+    if #active == 1 then
+      return active[1].provider
+    end
+    return multi_storage.new(active, self.bus)
   end
 
-  function self:detach_storage()
-    self:emit({ type = "StorageRemoved" })
+  function self:attach_storage(storage, id)
+    if id == nil then
+      if self.legacy_storage_attached then
+        error("storage already attached")
+      end
+      self.legacy_storage_attached = true
+      self:emit({ type = "StorageDetected", provider = storage })
+      return
+    end
+    if self.storage_entries[id] then
+      error("storage already attached: " .. tostring(id))
+    end
+    self.storage_entries[id] = { provider = storage }
+    local provider = build_storage_provider()
+    if provider then
+      self:emit({ type = "StorageDetected", provider = provider, storage_id = id })
+    else
+      self:emit({ type = "StorageRemoved", storage_id = id })
+    end
   end
 
-  function self:disable_storage()
-    self:emit({ type = "StorageDisabled" })
+  function self:detach_storage(id)
+    if id == nil then
+      if not self.legacy_storage_attached then
+        error("no storage attached")
+      end
+      self.legacy_storage_attached = false
+      self:emit({ type = "StorageRemoved" })
+      return
+    end
+    if not self.storage_entries[id] then
+      error("storage not attached: " .. tostring(id))
+    end
+    self.storage_entries[id] = nil
+    self.storage_disabled[id] = nil
+    local provider = build_storage_provider()
+    if provider then
+      self:emit({ type = "StorageDetected", provider = provider, storage_id = id })
+    else
+      self:emit({ type = "StorageRemoved", storage_id = id })
+    end
   end
 
-  function self:enable_storage()
-    self:emit({ type = "StorageEnabled" })
+  function self:disable_storage(id)
+    if id == nil then
+      self:emit({ type = "StorageDisabled" })
+      return
+    end
+    if not self.storage_entries[id] then
+      error("storage not attached: " .. tostring(id))
+    end
+    self.storage_disabled[id] = true
+    local provider = build_storage_provider()
+    if provider then
+      self:emit({ type = "StorageDetected", provider = provider, storage_id = id })
+    else
+      self:emit({ type = "StorageRemoved", storage_id = id })
+    end
   end
 
-  function self:attach_storage(storage)
-    self.storage = storage
+  function self:enable_storage(id)
+    if id == nil then
+      self:emit({ type = "StorageEnabled" })
+      return
+    end
+    if not self.storage_entries[id] then
+      error("storage not attached: " .. tostring(id))
+    end
+    self.storage_disabled[id] = nil
+    local provider = build_storage_provider()
+    if provider then
+      self:emit({ type = "StorageDetected", provider = provider, storage_id = id })
+    else
+      self:emit({ type = "StorageRemoved", storage_id = id })
+    end
   end
 
   function self:detach_machine(machine_id)
+    if not self.manager.catalog.instances[machine_id] then
+      error("machine not attached: " .. tostring(machine_id))
+    end
     self:emit({ type = "MachineRemoved", machine_id = machine_id })
   end
 
   function self:disable_machine(machine_id)
+    if not self.manager.catalog.instances[machine_id] then
+      error("machine not attached: " .. tostring(machine_id))
+    end
     self:emit({ type = "MachineDisabled", machine_id = machine_id })
   end
 
   function self:enable_machine(machine_id)
+    if not self.manager.catalog.instances[machine_id] then
+      error("machine not attached: " .. tostring(machine_id))
+    end
     self:emit({ type = "MachineEnabled", machine_id = machine_id })
   end
 
   function self:get_allocator()
     if self.manager.dirty or not self.allocator then
+      -- Allocator cache depends only on machine state.
       self.allocator = self.manager:build_allocator()
     end
     return self.allocator
+  end
+
+  function self:assert_no_inflight_tasks()
+    local count = 0
+    for _ in pairs(self.scheduler.tasks or {}) do
+      count = count + 1
+    end
+    if self.storage and self.storage.inflight_count then
+      count = count + self.storage:inflight_count()
+    end
+    if count > 0 then
+      error("inflight tasks: " .. tostring(count))
+    end
+  end
+
+  function self:assert_idle()
+    self:assert_no_inflight_tasks()
+    if self.scheduler and self.scheduler.timers and #self.scheduler.timers > 0 then
+      error("pending timers: " .. tostring(#self.scheduler.timers))
+    end
+  end
+
+  function self:assert_trace_contains(event_type, matcher)
+    for _, ev in ipairs(self.trace) do
+      if ev.type == event_type and (not matcher or matcher(ev.payload or {})) then
+        return true
+      end
+    end
+    error("trace missing event: " .. tostring(event_type))
   end
 
   function self:trace_dump()
