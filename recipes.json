@@ -1,0 +1,59 @@
+{
+    "recipes": [
+        {
+            "priority": 10,
+            "inputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:oak_log"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 4,
+                    "item": "minecraft:oak_planks"
+                }
+            ],
+            "id": "oak_planks",
+            "machine": "crafting_table"
+        },
+        {
+            "priority": 5,
+            "inputs": [
+                {
+                    "count": 2,
+                    "item": "minecraft:oak_planks"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 4,
+                    "item": "minecraft:stick"
+                }
+            ],
+            "id": "sticks",
+            "machine": "crafting_table"
+        },
+        {
+            "priority": 1,
+            "inputs": [
+                {
+                    "count": 4,
+                    "item": "minecraft:oak_planks"
+                },
+                {
+                    "count": 2,
+                    "item": "minecraft:stick"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:crafting_table"
+                }
+            ],
+            "id": "crafting_table",
+            "machine": "crafting_table"
+        }
+    ]
+}

@@ -19,31 +19,13 @@ function M.run()
   local provider = virtual_machine.new(scheduler, { duration = 2 })
   world:attach_machine("crafting_table", provider, "vt_1")
 
-  local registry = recipe.new_registry()
-  recipe.add(registry, {
-    id = "oak_planks",
-    inputs = { { item = "minecraft:oak_log", count = 1 } },
-    outputs = { { item = "minecraft:oak_planks", count = 4 } },
-    machine = "crafting_table",
-    priority = 10,
-  })
-  recipe.add(registry, {
-    id = "sticks",
-    inputs = { { item = "minecraft:oak_planks", count = 2 } },
-    outputs = { { item = "minecraft:stick", count = 4 } },
-    machine = "crafting_table",
-    priority = 5,
-  })
-  recipe.add(registry, {
-    id = "crafting_table",
-    inputs = {
-      { item = "minecraft:oak_planks", count = 4 },
-      { item = "minecraft:stick", count = 2 },
-    },
-    outputs = { { item = "minecraft:crafting_table", count = 1 } },
-    machine = "crafting_table",
-    priority = 1,
-  })
+  local recipe_path = "recipes.json"
+  local ok_reg, registry_or_err = recipe.load_registry(recipe_path)
+  if not ok_reg then
+    log.error(registry_or_err)
+    return nil
+  end
+  local registry = registry_or_err
 
   local recipes_by_output = recipe.rebuild_index(registry)
   local resource = world.storage

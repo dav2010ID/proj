@@ -1,0 +1,202 @@
+{
+    "recipes": [
+        {
+            "priority": 50,
+            "inputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:oak_log"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 4,
+                    "item": "minecraft:oak_planks"
+                }
+            ],
+            "id": "planks",
+            "machine": "crafting_table"
+        },
+        {
+            "priority": 40,
+            "inputs": [
+                {
+                    "count": 2,
+                    "item": "minecraft:oak_planks"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 4,
+                    "item": "minecraft:stick"
+                }
+            ],
+            "id": "sticks",
+            "machine": "crafting_table"
+        },
+        {
+            "priority": 30,
+            "inputs": [
+                {
+                    "count": 8,
+                    "item": "minecraft:cobblestone"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:furnace"
+                }
+            ],
+            "id": "furnace",
+            "machine": "crafting_table"
+        },
+        {
+            "priority": 60,
+            "inputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:iron_ore"
+                },
+                {
+                    "count": 1,
+                    "item": "minecraft:coal"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:iron_ingot"
+                }
+            ],
+            "id": "smelt_iron",
+            "machine": "furnace"
+        },
+        {
+            "priority": 20,
+            "inputs": [
+                {
+                    "count": 2,
+                    "item": "minecraft:iron_ingot"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:iron_plate"
+                }
+            ],
+            "id": "iron_plate",
+            "machine": "assembler"
+        },
+        {
+            "priority": 15,
+            "inputs": [
+                {
+                    "count": 4,
+                    "item": "minecraft:iron_plate"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:machine_casing"
+                }
+            ],
+            "id": "machine_casing",
+            "machine": "assembler"
+        },
+        {
+            "priority": 25,
+            "inputs": [
+                {
+                    "count": 2,
+                    "item": "minecraft:iron_ingot"
+                },
+                {
+                    "count": 2,
+                    "item": "minecraft:stick"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:iron_gear"
+                }
+            ],
+            "id": "iron_gear",
+            "machine": "crafting_table"
+        },
+        {
+            "priority": 10,
+            "inputs": [
+                {
+                    "count": 4,
+                    "item": "minecraft:oak_planks"
+                },
+                {
+                    "count": 1,
+                    "item": "minecraft:iron_ingot"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:basic_circuit"
+                }
+            ],
+            "id": "basic_circuit",
+            "machine": "assembler"
+        },
+        {
+            "priority": 5,
+            "inputs": [
+                {
+                    "count": 2,
+                    "item": "minecraft:iron_gear"
+                },
+                {
+                    "count": 1,
+                    "item": "minecraft:basic_circuit"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:mechanism"
+                }
+            ],
+            "id": "mechanism",
+            "machine": "assembler"
+        },
+        {
+            "priority": 1,
+            "inputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:machine_casing"
+                },
+                {
+                    "count": 1,
+                    "item": "minecraft:mechanism"
+                },
+                {
+                    "count": 1,
+                    "item": "minecraft:furnace"
+                },
+                {
+                    "count": 8,
+                    "item": "minecraft:cobblestone"
+                }
+            ],
+            "outputs": [
+                {
+                    "count": 1,
+                    "item": "minecraft:advanced_machine"
+                }
+            ],
+            "id": "advanced_machine",
+            "machine": "assembler"
+        }
+    ]
+}

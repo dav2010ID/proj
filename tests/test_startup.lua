@@ -114,117 +114,12 @@ local function run_startup(opts)
   world:attach_machine("furnace", furnace, "f_1")
   world:attach_machine("assembler", assembler, "a_1")
 
-  local registry = recipe.new_registry()
-
-  -- 1. logs -> planks
-  recipe.add(registry, {
-    id = "planks",
-    inputs = { { item = "minecraft:oak_log", count = 1 } },
-    outputs = { { item = "minecraft:oak_planks", count = 4 } },
-    machine = "crafting_table",
-    priority = 50,
-  })
-
-  -- 2. planks -> sticks
-  recipe.add(registry, {
-    id = "sticks",
-    inputs = { { item = "minecraft:oak_planks", count = 2 } },
-    outputs = { { item = "minecraft:stick", count = 4 } },
-    machine = "crafting_table",
-    priority = 40,
-  })
-
-  -- 3. cobble -> furnace
-  recipe.add(registry, {
-    id = "furnace",
-    inputs = {
-      { item = "minecraft:cobblestone", count = 8 },
-    },
-    outputs = { { item = "minecraft:furnace", count = 1 } },
-    machine = "crafting_table",
-    priority = 30,
-  })
-
-  -- 4. iron ore -> iron ingot
-  recipe.add(registry, {
-    id = "smelt_iron",
-    inputs = {
-      { item = "minecraft:iron_ore", count = 1 },
-      { item = "minecraft:coal", count = 1 },
-    },
-    outputs = { { item = "minecraft:iron_ingot", count = 1 } },
-    machine = "furnace",
-    priority = 60,
-  })
-
-  -- 5. iron ingot -> plates
-  recipe.add(registry, {
-    id = "iron_plate",
-    inputs = { { item = "minecraft:iron_ingot", count = 2 } },
-    outputs = { { item = "minecraft:iron_plate", count = 1 } },
-    machine = "assembler",
-    priority = 20,
-  })
-
-  -- 6. iron plates -> casing
-  recipe.add(registry, {
-    id = "machine_casing",
-    inputs = {
-      { item = "minecraft:iron_plate", count = 4 },
-    },
-    outputs = { { item = "minecraft:machine_casing", count = 1 } },
-    machine = "assembler",
-    priority = 15,
-  })
-
-  -- 7. sticks + iron -> gears
-  recipe.add(registry, {
-    id = "iron_gear",
-    inputs = {
-      { item = "minecraft:iron_ingot", count = 2 },
-      { item = "minecraft:stick", count = 2 },
-    },
-    outputs = { { item = "minecraft:iron_gear", count = 1 } },
-    machine = "crafting_table",
-    priority = 25,
-  })
-
-  -- 8. planks + iron -> circuit board
-  recipe.add(registry, {
-    id = "basic_circuit",
-    inputs = {
-      { item = "minecraft:oak_planks", count = 4 },
-      { item = "minecraft:iron_ingot", count = 1 },
-    },
-    outputs = { { item = "minecraft:basic_circuit", count = 1 } },
-    machine = "assembler",
-    priority = 10,
-  })
-
-  -- 9. gears + circuit -> mechanism
-  recipe.add(registry, {
-    id = "mechanism",
-    inputs = {
-      { item = "minecraft:iron_gear", count = 2 },
-      { item = "minecraft:basic_circuit", count = 1 },
-    },
-    outputs = { { item = "minecraft:mechanism", count = 1 } },
-    machine = "assembler",
-    priority = 5,
-  })
-
-  -- 10. final assembly
-  recipe.add(registry, {
-    id = "advanced_machine",
-    inputs = {
-      { item = "minecraft:machine_casing", count = 1 },
-      { item = "minecraft:mechanism", count = 1 },
-      { item = "minecraft:furnace", count = 1 },
-    },
-    outputs = { { item = "minecraft:advanced_machine", count = 1 } },
-    machine = "assembler",
-    priority = 1,
-  })
+  local recipe_path = "recipes_startup.json"
+  local ok_reg, registry_or_err = recipe.load_registry(recipe_path)
+  if not ok_reg then
+    error(registry_or_err)
+  end
+  local registry = registry_or_err
 
   local recipes_by_output = recipe.rebuild_index(registry)
   local resource = world.storage
