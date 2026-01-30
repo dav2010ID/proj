@@ -16,6 +16,17 @@ local function test_split_limits()
   assert_equal(batches[3]["b"], 2, "batch3 b")
 end
 
+local function test_split_limits_capabilities_format()
+  local batches = supply_router.split_batches(
+    { ["a"] = 3, ["b"] = 2 },
+    { batch = { max_items = 1, max_total = 2 } }
+  )
+  assert_equal(#batches, 3, "batch count (caps)")
+  assert_equal(batches[1]["a"], 2, "batch1 a (caps)")
+  assert_equal(batches[2]["a"], 1, "batch2 a (caps)")
+  assert_equal(batches[3]["b"], 2, "batch3 b (caps)")
+end
+
 local function test_split_single_item()
   local batches = supply_router.split_batches(
     { ["iron"] = 100 },
@@ -52,6 +63,7 @@ end
 
 function M.run()
   test_split_limits()
+  test_split_limits_capabilities_format()
   test_split_single_item()
   test_max_items_distinct()
   test_empty_request()

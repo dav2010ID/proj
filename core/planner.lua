@@ -1,6 +1,7 @@
 local util = require("core.util")
 local steps = require("core.steps")
 local errors = require("core.error_codes")
+local plan_graph = require("core.plan_graph")
 
 local M = {}
 
@@ -173,7 +174,7 @@ local function plan_need(ctx, item, count)
   return true, nil
 end
 
-function M.plan(target_item_key, target_count, recipes_by_output, resource_provider)
+function M.plan(target_item_key, target_count, recipes_by_output, resource_provider, opts)
   local reachable = compute_reachable(target_item_key, recipes_by_output)
   local ctx = {
     resource = resource_provider,
@@ -220,10 +221,14 @@ function M.plan(target_item_key, target_count, recipes_by_output, resource_provi
 
   local result = compress_supplies(ctx.plan)
   result = compress_crafts(result)
+  if opts and opts.return_graph then
+    local graph = plan_graph.from_steps(result)
+    return true, result, graph
+  end
   return true, result
 end
 
-function M.plan_many(goals, recipes_by_output, resource_provider)
+function M.plan_many(goals, recipes_by_output, resource_provider, opts)
   local reachable = compute_reachable_many(goals, recipes_by_output)
   local ctx = {
     resource = resource_provider,
@@ -272,6 +277,10 @@ function M.plan_many(goals, recipes_by_output, resource_provider)
 
   local result = compress_supplies(ctx.plan)
   result = compress_crafts(result)
+  if opts and opts.return_graph then
+    local graph = plan_graph.from_steps(result)
+    return true, result, graph
+  end
   return true, result
 end
 

@@ -14,6 +14,11 @@ function M.new(scheduler, opts)
   local fail_immediate = opts.fail_immediate or false
 
   return {
+    capabilities = {
+      async = true,
+      parallel = false,
+      transactional = false,
+    },
     can_craft = function(self, recipe, machine)
       if recipe.machine ~= machine.type then
         return false

@@ -2,6 +2,8 @@ local errors = require("core.error_codes")
 local supply_router = require("runtime.supply_router")
 local util = require("core.util")
 local task_state = require("runtime.task_state")
+local events = require("core.events")
+local capability = require("core.capability")
 
 local M = {}
 
@@ -20,6 +22,12 @@ function M.new(providers, bus)
     bus = bus,
     inflight = {},
     counter = 0,
+    capabilities = {
+      batch = {},
+      async = true,
+      parallel = true,
+      transactional = true,
+    },
     stats = {
       total_batches = 0,
       failed_batches = 0,
@@ -99,13 +107,6 @@ function M.new(providers, bus)
     return entry.provider:add(key, count)
   end
 
-  function self:capabilities()
-    return {
-      max_items_per_batch = nil,
-      max_total_count = nil,
-    }
-  end
-
   function self:get_batch_async(request_map)
     self.counter = self.counter + 1
     local master_id = "multi_batch_" .. tostring(self.counter)
@@ -130,23 +131,22 @@ function M.new(providers, bus)
     for _, group in pairs(per_provider) do
       local entry = group.entry
       local provider = entry.provider
-      local caps = provider.capabilities and provider:capabilities() or {}
+      local caps = capability.get_capability_limits(provider, "batch")
       local batches = supply_router.split_batches(group.items, caps)
       if #batches > 1 then
         self.stats.split_batches = self.stats.split_batches + 1
-        emit({
-          type = "BatchSplit",
+        emit(events.BatchSplit({
           storage_id = entry.id,
           original_size = group.items,
           batches_count = #batches,
-        })
+        }))
       end
       for _, batch in ipairs(batches) do
         if provider.get_batch_async then
           local req_id = provider:get_batch_async(batch)
           table.insert(master.requests, { id = req_id, provider = provider, storage_id = entry.id, batch = batch })
           self.stats.total_batches = self.stats.total_batches + 1
-          emit({ type = "BatchQueued", storage_id = entry.id, batch_id = req_id })
+          emit(events.BatchQueued({ storage_id = entry.id, batch_id = req_id }))
         else
           local batch_items = 0
           for item, count in pairs(batch) do
@@ -154,22 +154,21 @@ function M.new(providers, bus)
             local req_id = provider:get_async(item, count)
             table.insert(master.requests, { id = req_id, provider = provider, storage_id = entry.id, item = item, count = count })
             self.stats.total_batches = self.stats.total_batches + 1
-            emit({ type = "BatchQueued", storage_id = entry.id, batch_id = req_id })
+            emit(events.BatchQueued({ storage_id = entry.id, batch_id = req_id }))
           end
           if batch_items > 1 then
             self.stats.split_batches = self.stats.split_batches + 1
-            emit({
-              type = "BatchSplit",
+            emit(events.BatchSplit({
               storage_id = entry.id,
               original_size = batch,
               batches_count = batch_items,
-            })
+            }))
           end
         end
       end
     end
 
-    emit({ type = "SupplyRequested", batch_id = master_id })
+    emit(events.SupplyRequested({ batch_id = master_id }))
     return master_id
   end
 
@@ -178,13 +177,16 @@ function M.new(providers, bus)
     if not master then
       error({ code = errors.INVALID_HANDLE, id = id })
     end
+    if master.state == "FAILED" then
+      return task_state.TaskState.FAILED
+    end
     local all_done = true
     for _, sub in ipairs(master.requests) do
       local state = sub.provider:poll_request(sub.id)
       if state == task_state.TaskState.FAILED then
         master.state = "FAILED"
         self.stats.failed_batches = self.stats.failed_batches + 1
-        emit({ type = "BatchFailed", storage_id = sub.storage_id, batch_id = sub.id })
+        emit(events.BatchFailed({ storage_id = sub.storage_id, batch_id = sub.id }))
         return task_state.TaskState.FAILED
       elseif state == task_state.TaskState.RUNNING then
         all_done = false
@@ -221,10 +223,10 @@ function M.new(providers, bus)
           result[only_item] = (result[only_item] or 0) + out
         end
       end
-      emit({ type = "BatchDone", storage_id = sub.storage_id, batch_id = sub.id })
+      emit(events.BatchDone({ storage_id = sub.storage_id, batch_id = sub.id }))
     end
     self.inflight[id] = nil
-    emit({ type = "SupplySatisfied", batch_id = id })
+    emit(events.SupplySatisfied({ batch_id = id }))
     return result
   end
 

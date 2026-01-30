@@ -17,6 +17,12 @@ function M.new(scheduler, initial, latency)
     supports_set = nil,
     max_items_per_batch = nil,
     max_total_count = nil,
+    capabilities = {
+      batch = {},
+      async = true,
+      parallel = true,
+      transactional = true,
+    },
   }
 
   function self:prepare(reachable)
@@ -81,15 +87,15 @@ function M.new(scheduler, initial, latency)
     return self.supports_set[key] == true
   end
 
-  function self:supports_batch()
-    return true
-  end
-
-  function self:capabilities()
-    return {
-      max_items_per_batch = self.max_items_per_batch,
-      max_total_count = self.max_total_count,
-    }
+  local function sync_caps()
+    if self.max_items_per_batch ~= nil or self.max_total_count ~= nil then
+      self.capabilities.batch = {
+        max_items = self.max_items_per_batch,
+        max_total = self.max_total_count,
+      }
+    else
+      self.capabilities.batch = {}
+    end
   end
 
   function self:get_async(item, count)
@@ -204,6 +210,7 @@ function M.new(scheduler, initial, latency)
   function self:set_limits(max_items_per_batch, max_total_count)
     self.max_items_per_batch = max_items_per_batch
     self.max_total_count = max_total_count
+    sync_caps()
   end
 
   function self:inflight_count()
@@ -214,6 +221,7 @@ function M.new(scheduler, initial, latency)
     return count
   end
 
+  sync_caps()
   return self
 end
 

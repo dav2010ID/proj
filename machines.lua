@@ -1,4 +1,5 @@
 local errors = require("core.error_codes")
+local events = require("core.events")
 
 local M = {}
 
@@ -24,7 +25,7 @@ function M.new_allocator(machines, bus)
         self.free[id] = nil
         self.busy[id] = machine
         if self.bus then
-          self.bus:emit({ type = "MachineLocked", machine_id = id, machine_type = machine.type })
+          self.bus:emit(events.MachineLocked({ machine_id = id, machine_type = machine.type }))
         end
         return machine
       end
@@ -34,13 +35,13 @@ function M.new_allocator(machines, bus)
 
   function self:unlock(machine_id)
     if not self.busy[machine_id] then
-      error({ code = "UNLOCK_NON_BUSY", machine_id = machine_id })
+      error({ code = errors.UNLOCK_NON_BUSY, machine_id = machine_id })
     end
     local machine = self.busy[machine_id]
     self.busy[machine_id] = nil
     self.free[machine.id] = machine
     if self.bus then
-      self.bus:emit({ type = "MachineUnlocked", machine_id = machine.id, machine_type = machine.type })
+      self.bus:emit(events.MachineUnlocked({ machine_id = machine.id, machine_type = machine.type }))
     end
   end
 

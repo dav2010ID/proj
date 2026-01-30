@@ -2,6 +2,7 @@
 -- Not used in production.
 local util = require("core.util")
 local errors = require("core.error_codes")
+local events = require("core.events")
 
 local M = {}
 
@@ -18,6 +19,12 @@ function M.new(initial, bus, opts)
     in_txn = false,
     reachable = nil,
     bus = bus,
+    capabilities = {
+      batch = nil,
+      async = false,
+      parallel = false,
+      transactional = true,
+    },
   }
 
   local function record(entry)
@@ -107,10 +114,10 @@ function M.new(initial, bus, opts)
     end
     if self.bus then
       for _, entry in ipairs(self.delta_minus) do
-        self.bus:emit({ type = "StorageMutation", item = entry.key, count = -entry.count })
+        self.bus:emit(events.StorageMutation({ item = entry.key, count = -entry.count }))
       end
       for _, entry in ipairs(self.delta_plus) do
-        self.bus:emit({ type = "StorageMutation", item = entry.key, count = entry.count })
+        self.bus:emit(events.StorageMutation({ item = entry.key, count = entry.count }))
       end
     end
     self.delta_minus = {}

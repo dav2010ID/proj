@@ -64,6 +64,12 @@ function M.new(opts)
     allowlist = opts.allowlist,
     inflight = {},
     counter = 0,
+    capabilities = {
+      batch = { max_items = nil, max_total = nil },
+      async = true,
+      parallel = true,
+      transactional = true,
+    },
   }
 
   local function refresh()

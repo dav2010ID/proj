@@ -10,6 +10,12 @@ function M.new(initial)
     delta_plus = {},
     snapshot_taken = false,
     reachable = nil,
+    capabilities = {
+      batch = nil,
+      async = false,
+      parallel = false,
+      transactional = true,
+    },
   }
 
   function self:prepare(reachable)

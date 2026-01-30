@@ -5,6 +5,11 @@ local M = {}
 function M.new()
   local counter = 0
   return {
+    capabilities = {
+      async = false,
+      parallel = false,
+      transactional = false,
+    },
     synchronous = true,
     can_craft = function(self, recipe, machine)
       if recipe.machine ~= "crafting_table" then

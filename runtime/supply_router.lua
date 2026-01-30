@@ -1,4 +1,5 @@
 local errors = require("core.error_codes")
+local capability = require("core.capability")
 
 local M = {}
 
@@ -12,8 +13,16 @@ local function sort_keys(map)
 end
 
 local function capacity_limits(cap)
-  local max_items = cap and cap.max_items_per_batch or math.huge
-  local max_total = cap and cap.max_total_count or math.huge
+  local limits = cap
+  if type(cap) == "table" and cap.batch then
+    if cap.max_items_per_batch or cap.max_total_count then
+      limits = cap
+    else
+      limits = capability.get_capability_limits({ capabilities = cap }, "batch")
+    end
+  end
+  local max_items = limits and (limits.max_items_per_batch or limits.max_items) or math.huge
+  local max_total = limits and (limits.max_total_count or limits.max_total) or math.huge
   if max_items <= 0 or max_total <= 0 then
     error({ code = errors.BATCH_TOO_LARGE })
   end
@@ -83,6 +92,51 @@ function M.split_batches(request_map, cap)
 
   flush()
   return batches
+end
+
+function M.split_batch(count, cap)
+  local limits = capacity_limits(cap)
+  local batches = {}
+  local remaining = count
+  while remaining > 0 do
+    local take = math.min(remaining, limits.max_total)
+    if take <= 0 then
+      error({ code = errors.BATCH_TOO_LARGE })
+    end
+    table.insert(batches, take)
+    remaining = remaining - take
+  end
+  return batches
+end
+
+function M.select_optimal_provider(item, providers, caps_filter)
+  for _, entry in ipairs(providers or {}) do
+    local provider = entry.provider or entry
+    local ok = true
+    if provider.supports and not provider:supports(item) then
+      ok = false
+    end
+    if ok and caps_filter then
+      for _, cap_name in ipairs(caps_filter) do
+        if not capability.has_capability(provider, cap_name) then
+          ok = false
+          break
+        end
+      end
+    end
+    if ok then
+      return entry
+    end
+  end
+  return nil
+end
+
+function M.route_request(item, _count, providers)
+  local entry = M.select_optimal_provider(item, providers)
+  if not entry then
+    error({ code = errors.ITEM_NOT_REACHABLE, item = item })
+  end
+  return entry.id or entry.provider or entry
 end
 
 return M

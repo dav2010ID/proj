@@ -55,13 +55,10 @@ function M.new(default_storage, bus)
   })
 
   function self:on_storage_detected(event)
-    if self.storage ~= self.default then
-      error("storage already active")
-    end
     self.storage = event.provider
     self.disabled = nil
     self.active_storage = event.provider
-    self.has_active = true
+    self.has_active = event.provider ~= nil
   end
 
   function self:on_storage_removed(_event)

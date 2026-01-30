@@ -8,6 +8,7 @@ local machines = require("machines")
 local virtual_storage = require("virtual.storage")
 local virtual_scheduler = require("virtual.scheduler")
 local virtual_async_storage = require("virtual.async_storage")
+local events = require("core.events")
 
 local M = {}
 
@@ -74,7 +75,7 @@ function M.new(initial_stock, opts)
     for _ = 1, steps do
       self.time = self.time + 1
       self.scheduler:tick()
-      self:emit({ type = "Tick", now = self.time })
+      self:emit(events.Tick({ now = self.time }))
     end
   end
 
@@ -82,7 +83,7 @@ function M.new(initial_stock, opts)
     if self.manager.catalog.instances[machine_id] then
       error("machine already attached: " .. tostring(machine_id))
     end
-    self:emit({ type = "MachineDetected", machine_type = machine_type, provider = provider, machine_id = machine_id })
+    self:emit(events.MachineDetected({ machine_type = machine_type, provider = provider, machine_id = machine_id }))
   end
 
   local function build_storage_provider()
@@ -107,7 +108,7 @@ function M.new(initial_stock, opts)
         error("storage already attached")
       end
       self.legacy_storage_attached = true
-      self:emit({ type = "StorageDetected", provider = storage })
+      self:emit(events.StorageDetected({ provider = storage }))
       return
     end
     if self.storage_entries[id] then
@@ -116,9 +117,9 @@ function M.new(initial_stock, opts)
     self.storage_entries[id] = { provider = storage }
     local provider = build_storage_provider()
     if provider then
-      self:emit({ type = "StorageDetected", provider = provider, storage_id = id })
+      self:emit(events.StorageDetected({ provider = provider, storage_id = id }))
     else
-      self:emit({ type = "StorageRemoved", storage_id = id })
+      self:emit(events.StorageRemoved({ storage_id = id }))
     end
   end
 
@@ -128,7 +129,7 @@ function M.new(initial_stock, opts)
         error("no storage attached")
       end
       self.legacy_storage_attached = false
-      self:emit({ type = "StorageRemoved" })
+      self:emit(events.StorageRemoved({}))
       return
     end
     if not self.storage_entries[id] then
@@ -138,15 +139,15 @@ function M.new(initial_stock, opts)
     self.storage_disabled[id] = nil
     local provider = build_storage_provider()
     if provider then
-      self:emit({ type = "StorageDetected", provider = provider, storage_id = id })
+      self:emit(events.StorageDetected({ provider = provider, storage_id = id }))
     else
-      self:emit({ type = "StorageRemoved", storage_id = id })
+      self:emit(events.StorageRemoved({ storage_id = id }))
     end
   end
 
   function self:disable_storage(id)
     if id == nil then
-      self:emit({ type = "StorageDisabled" })
+      self:emit(events.StorageDisabled({}))
       return
     end
     if not self.storage_entries[id] then
@@ -155,15 +156,15 @@ function M.new(initial_stock, opts)
     self.storage_disabled[id] = true
     local provider = build_storage_provider()
     if provider then
-      self:emit({ type = "StorageDetected", provider = provider, storage_id = id })
+      self:emit(events.StorageDetected({ provider = provider, storage_id = id }))
     else
-      self:emit({ type = "StorageRemoved", storage_id = id })
+      self:emit(events.StorageRemoved({ storage_id = id }))
     end
   end
 
   function self:enable_storage(id)
     if id == nil then
-      self:emit({ type = "StorageEnabled" })
+      self:emit(events.StorageEnabled({}))
       return
     end
     if not self.storage_entries[id] then
@@ -172,9 +173,9 @@ function M.new(initial_stock, opts)
     self.storage_disabled[id] = nil
     local provider = build_storage_provider()
     if provider then
-      self:emit({ type = "StorageDetected", provider = provider, storage_id = id })
+      self:emit(events.StorageDetected({ provider = provider, storage_id = id }))
     else
-      self:emit({ type = "StorageRemoved", storage_id = id })
+      self:emit(events.StorageRemoved({ storage_id = id }))
     end
   end
 
@@ -182,21 +183,21 @@ function M.new(initial_stock, opts)
     if not self.manager.catalog.instances[machine_id] then
       error("machine not attached: " .. tostring(machine_id))
     end
-    self:emit({ type = "MachineRemoved", machine_id = machine_id })
+    self:emit(events.MachineRemoved({ machine_id = machine_id }))
   end
 
   function self:disable_machine(machine_id)
     if not self.manager.catalog.instances[machine_id] then
       error("machine not attached: " .. tostring(machine_id))
     end
-    self:emit({ type = "MachineDisabled", machine_id = machine_id })
+    self:emit(events.MachineDisabled({ machine_id = machine_id }))
   end
 
   function self:enable_machine(machine_id)
     if not self.manager.catalog.instances[machine_id] then
       error("machine not attached: " .. tostring(machine_id))
     end
-    self:emit({ type = "MachineEnabled", machine_id = machine_id })
+    self:emit(events.MachineEnabled({ machine_id = machine_id }))
   end
 
   function self:get_allocator()

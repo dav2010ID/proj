@@ -1,3 +1,5 @@
+local event_validator = require("core.event_validator")
+
 local M = {}
 
 function M.new()
@@ -11,6 +13,10 @@ function M.new()
   end
 
   function self:emit(event)
+    local ok, err = event_validator.validate_event(event)
+    if not ok then
+      error(err)
+    end
     if self.on_emit then
       self.on_emit(event)
     end
@@ -18,6 +24,10 @@ function M.new()
     for _, h in ipairs(handlers) do
       h(event)
     end
+  end
+
+  function self:publish(event)
+    self:emit(event)
   end
 
   return self

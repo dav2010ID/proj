@@ -1,6 +1,8 @@
 local task_state = require("runtime.task_state")
 local errors = require("core.error_codes")
 local supply_router = require("runtime.supply_router")
+local scheduler = require("runtime.scheduler")
+local capability = require("core.capability")
 
 local M = {}
 
@@ -70,7 +72,7 @@ function M.new(resource_provider, machine_allocator)
     end
   end
 
-  function self:try_start_craft(step, started_tick)
+  function self:try_start_craft(step, started_tick, node_id)
     if not inputs_available(step) then
       return false
     end
@@ -92,11 +94,18 @@ function M.new(resource_provider, machine_allocator)
       self.allocator:unlock(machine.id)
       error(consume_err)
     end
-    table.insert(self.inflight, { step = step, machine_id = machine.id, provider = machine.provider, handle = handle_or_err, started_tick = started_tick })
+    table.insert(self.inflight, {
+      step = step,
+      machine_id = machine.id,
+      provider = machine.provider,
+      handle = handle_or_err,
+      started_tick = started_tick,
+      node_id = node_id,
+    })
     return true
   end
 
-  function self:poll_tasks()
+  function self:poll_tasks(on_complete)
     local progressed = false
     for i = #self.inflight, 1, -1 do
       local task = self.inflight[i]
@@ -114,6 +123,9 @@ function M.new(resource_provider, machine_allocator)
         self.allocator:unlock(task.machine_id)
         table.remove(self.inflight, i)
         progressed = true
+        if on_complete then
+          on_complete(task)
+        end
       end
     end
     return progressed
@@ -157,7 +169,7 @@ function M.new(resource_provider, machine_allocator)
     if next(self.supply_totals) == nil then
       return
     end
-    local caps = self.resource.capabilities and self.resource:capabilities() or {}
+    local caps = capability.get_capability_limits(self.resource, "batch")
     local batches = supply_router.split_batches(self.supply_totals, caps)
     for _, batch in ipairs(batches) do
       local req_id = self.resource:get_batch_async(batch)
@@ -254,11 +266,91 @@ local function run_loop(ctx, plan, max_steps_per_tick, task_timeout)
       error({ code = errors.DEADLOCK })
     end
 
-    coroutine.yield()
+    local running, is_main = coroutine.running()
+    if running and (is_main == false or is_main == nil) then
+      coroutine.yield()
+    end
   end
 
   ctx:consume_supplies()
   ctx:apply_outputs()
+end
+
+local function run_graph_loop(ctx, graph, max_steps_per_tick, task_timeout)
+  local state = scheduler.schedule(graph, {})
+  local tick = 0
+
+  for _, node in ipairs(graph.nodes) do
+    if node.kind == "craft" then
+      if not ctx.allocator:supports_recipe(node.recipe) then
+        error({ code = errors.NO_COMPATIBLE_MACHINE })
+      end
+    end
+  end
+
+  while (not scheduler.all_done(state)) or #ctx.inflight > 0 do
+    tick = tick + 1
+    local progressed = false
+
+    local processed = 0
+    local ready = scheduler.get_ready_tasks(state)
+    for _, task in ipairs(ready) do
+      if max_steps_per_tick and max_steps_per_tick > 0 and processed >= max_steps_per_tick then
+        break
+      end
+      local node = task.node
+      if node.kind == "supply" then
+        ctx:execute_supply(node)
+        scheduler.mark_started(state, task)
+        scheduler.update_after_completion(task, state)
+        progressed = true
+      elseif node.kind == "craft" then
+        if ctx:try_start_craft(node, tick, task.id) then
+          scheduler.mark_started(state, task)
+          progressed = true
+        end
+      else
+        error({ code = errors.UNKNOWN_STEP })
+      end
+      processed = processed + 1
+    end
+
+    ctx:dispatch_supply_batches()
+    local ok_resources = ctx:poll_resource_requests()
+    local ok = ctx:poll_tasks(function(task)
+      if task.node_id then
+        scheduler.update_after_completion({ id = task.node_id }, state)
+      end
+    end)
+    progressed = progressed or ok or ok_resources
+
+    if task_timeout then
+      for _, task in ipairs(ctx.inflight) do
+        if task.started_tick and (tick - task.started_tick) >= task_timeout then
+          error({ code = errors.TASK_TIMEOUT, task_id = task.handle and task.handle.id })
+        end
+      end
+    end
+
+    if not progressed and #ctx.inflight == 0 and (not scheduler.all_done(state)) and #ctx.resource_requests == 0 then
+      error({ code = errors.DEADLOCK })
+    end
+
+    local running, is_main = coroutine.running()
+    if running and (is_main == false or is_main == nil) then
+      coroutine.yield()
+    end
+  end
+
+  ctx:consume_supplies()
+  ctx:apply_outputs()
+end
+
+local function is_graph(plan)
+  return type(plan) == "table"
+    and type(plan.nodes) == "table"
+    and type(plan.edges) == "table"
+    and type(plan.get_dependencies) == "function"
 end
 
 function M.execute(plan, resource_provider, machine_allocator, opts)
@@ -271,7 +363,11 @@ function M.execute(plan, resource_provider, machine_allocator, opts)
   end
 
   local ok, err = pcall(function()
-    run_loop(ctx, plan, max_steps_per_tick, task_timeout)
+    if is_graph(plan) then
+      run_graph_loop(ctx, plan, max_steps_per_tick, task_timeout)
+    else
+      run_loop(ctx, plan, max_steps_per_tick, task_timeout)
+    end
   end)
 
   if not ok then

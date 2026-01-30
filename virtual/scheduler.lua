@@ -1,6 +1,7 @@
 -- TEST SUPPORT CODE
 -- Not used in production.
 local task_state = require("runtime.task_state")
+local events = require("core.events")
 
 local M = {}
 
@@ -32,9 +33,9 @@ function M.new(bus)
     self.tasks[handle.id] = handle
     if self.bus then
       if self.in_tick then
-        table.insert(self.pending_events, { type = "TaskStarted", task_id = handle.id })
+        table.insert(self.pending_events, events.TaskStarted({ task_id = handle.id }))
       else
-        self.bus:emit({ type = "TaskStarted", task_id = handle.id })
+        self.bus:emit(events.TaskStarted({ task_id = handle.id }))
       end
     end
   end
@@ -61,7 +62,7 @@ function M.new(bus)
         if handle.remaining <= 0 then
           handle.state = task_state.TaskState.DONE
           if self.bus then
-            table.insert(self.pending_events, { type = "TaskFinished", task_id = handle.id })
+            table.insert(self.pending_events, events.TaskFinished({ task_id = handle.id }))
           end
         end
       end
@@ -93,9 +94,9 @@ function M.new(bus)
     handle.error = error_message
     if self.bus then
       if self.in_tick then
-        table.insert(self.pending_events, { type = "TaskFailed", task_id = handle.id, error = error_message })
+        table.insert(self.pending_events, events.TaskFailed({ task_id = handle.id, error = error_message }))
       else
-        self.bus:emit({ type = "TaskFailed", task_id = handle.id, error = error_message })
+        self.bus:emit(events.TaskFailed({ task_id = handle.id, error = error_message }))
       end
     end
     if registered and not self.in_tick then
