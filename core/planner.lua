@@ -52,55 +52,40 @@ local function get_output_for_item(recipe, item)
   return nil
 end
 
-local function compress_supplies(plan)
-  -- Invariant: all supply steps are allowed to run before craft steps.
-  -- This intentionally groups supplies first to reduce IO.
-  local totals = {}
-  local order = {}
-  local crafts = {}
-  for _, step in ipairs(plan) do
-    if step.kind == "supply" then
-      if not totals[step.item] then
-        totals[step.item] = 0
-        table.insert(order, step.item)
-      end
-      totals[step.item] = totals[step.item] + step.count
-    else
-      table.insert(crafts, step)
-    end
-  end
-  local merged = {}
-  for _, item in ipairs(order) do
-    if totals[item] > 0 then
-      table.insert(merged, steps.supply(item, totals[item]))
-    end
-  end
-  for _, step in ipairs(crafts) do
-    table.insert(merged, step)
-  end
-  return merged
+local function add_supply_node(ctx, item, count)
+  local key = util.normalize(item)
+  local node = {
+    kind = "supply",
+    item = key,
+    count = count,
+    inputs = {},
+    outputs = { [key] = count },
+  }
+  return ctx.graph:add_node(node)
 end
 
-local function compress_crafts(plan)
-  local merged = {}
-  local last = nil
-  for _, step in ipairs(plan) do
-    if step.kind == "craft" then
-      if last and last.kind == "craft" and last.recipe.id == step.recipe.id and last.recipe.machine == step.recipe.machine then
-        last.times = last.times + step.times
-      else
-        table.insert(merged, step)
-        last = step
-      end
-    else
-      table.insert(merged, step)
-      last = step
-    end
+local function add_craft_node(ctx, recipe, times)
+  local inputs = {}
+  local outputs = {}
+  for _, input in ipairs(recipe.inputs or {}) do
+    local key = util.normalize(input.item)
+    inputs[key] = (inputs[key] or 0) + (input.count * times)
   end
-  return merged
+  for _, output in ipairs(recipe.outputs or {}) do
+    local key = util.normalize(output.item)
+    outputs[key] = (outputs[key] or 0) + (output.count * times)
+  end
+  local node = {
+    kind = "craft",
+    recipe = recipe,
+    times = times,
+    inputs = inputs,
+    outputs = outputs,
+  }
+  return ctx.graph:add_node(node)
 end
 
-local function plan_need(ctx, item, count)
+local function plan_need(ctx, item, count, consumer_id)
   local key = util.normalize(item)
   if ctx.stack[key] then
     return false, { code = errors.CYCLE_DETECTED }
@@ -120,7 +105,11 @@ local function plan_need(ctx, item, count)
       if ctx.stock_remaining[key] < 0 then
         return false, { code = errors.INSUFFICIENT_STOCK }
       end
-      table.insert(ctx.plan, steps.supply(key, from_stock))
+      ctx.supply_totals[key] = (ctx.supply_totals[key] or 0) + from_stock
+      if consumer_id then
+        ctx.supply_edges[key] = ctx.supply_edges[key] or {}
+        table.insert(ctx.supply_edges[key], { to = consumer_id, amount = from_stock })
+      end
     end
     ctx.virtual_stock[key] = available - use
     if ctx.virtual_stock[key] < 0 then
@@ -147,16 +136,18 @@ local function plan_need(ctx, item, count)
     return false, { code = errors.NO_RECIPE_OR_STOCK }
   end
   local times = math.floor((remain + out.count - 1) / out.count)
+  local craft_id = add_craft_node(ctx, recipe, times)
+  if consumer_id then
+    ctx.graph:add_flow(craft_id, consumer_id, key, remain)
+  end
 
   for _, input in ipairs(recipe.inputs) do
-    local ok, err = plan_need(ctx, input.item, input.count * times)
+    local ok, err = plan_need(ctx, input.item, input.count * times, craft_id)
     if not ok then
       ctx.stack[key] = nil
       return false, err
     end
   end
-
-  table.insert(ctx.plan, steps.craft(recipe, times))
 
   for _, output in ipairs(recipe.outputs) do
     local out_item = util.normalize(output.item)
@@ -183,7 +174,9 @@ function M.plan(target_item_key, target_count, recipes_by_output, resource_provi
     virtual_stock = {},
     stock_remaining = {},
     stack = {},
-    plan = {},
+    graph = plan_graph.new(),
+    supply_totals = {},
+    supply_edges = {},
   }
 
   if resource_provider.prepare then
@@ -205,7 +198,7 @@ function M.plan(target_item_key, target_count, recipes_by_output, resource_provi
     resource_provider:snapshot()
   end
 
-  local ok, err = plan_need(ctx, target_item_key, target_count)
+  local ok, err = plan_need(ctx, target_item_key, target_count, nil)
   if not ok then
     if began and resource_provider.rollback then
       resource_provider:rollback()
@@ -219,13 +212,18 @@ function M.plan(target_item_key, target_count, recipes_by_output, resource_provi
     resource_provider:commit()
   end
 
-  local result = compress_supplies(ctx.plan)
-  result = compress_crafts(result)
-  if opts and opts.return_graph then
-    local graph = plan_graph.from_steps(result)
-    return true, result, graph
+  for item, total in pairs(ctx.supply_totals) do
+    local supply_id = add_supply_node(ctx, item, total)
+    for _, edge in ipairs(ctx.supply_edges[item] or {}) do
+      ctx.graph:add_flow(supply_id, edge.to, item, edge.amount)
+    end
   end
-  return true, result
+
+  if opts and opts.return_steps then
+    local result = steps.from_graph(ctx.graph)
+    return true, result, ctx.graph
+  end
+  return true, ctx.graph
 end
 
 function M.plan_many(goals, recipes_by_output, resource_provider, opts)
@@ -237,7 +235,9 @@ function M.plan_many(goals, recipes_by_output, resource_provider, opts)
     virtual_stock = {},
     stock_remaining = {},
     stack = {},
-    plan = {},
+    graph = plan_graph.new(),
+    supply_totals = {},
+    supply_edges = {},
   }
 
   if resource_provider.prepare then
@@ -260,7 +260,7 @@ function M.plan_many(goals, recipes_by_output, resource_provider, opts)
   end
 
   for _, goal in ipairs(goals) do
-    local ok, err = plan_need(ctx, goal.item, goal.count)
+    local ok, err = plan_need(ctx, goal.item, goal.count, nil)
     if not ok then
       if began and resource_provider.rollback then
         resource_provider:rollback()
@@ -275,13 +275,18 @@ function M.plan_many(goals, recipes_by_output, resource_provider, opts)
     resource_provider:commit()
   end
 
-  local result = compress_supplies(ctx.plan)
-  result = compress_crafts(result)
-  if opts and opts.return_graph then
-    local graph = plan_graph.from_steps(result)
-    return true, result, graph
+  for item, total in pairs(ctx.supply_totals) do
+    local supply_id = add_supply_node(ctx, item, total)
+    for _, edge in ipairs(ctx.supply_edges[item] or {}) do
+      ctx.graph:add_flow(supply_id, edge.to, item, edge.amount)
+    end
   end
-  return true, result
+
+  if opts and opts.return_steps then
+    local result = steps.from_graph(ctx.graph)
+    return true, result, ctx.graph
+  end
+  return true, ctx.graph
 end
 
 return M

@@ -3,6 +3,7 @@ local errors = require("core.error_codes")
 local supply_router = require("runtime.supply_router")
 local scheduler = require("runtime.scheduler")
 local capability = require("core.capability")
+local policy_module = require("runtime.policy")
 
 local M = {}
 
@@ -10,6 +11,7 @@ function M.new(resource_provider, machine_allocator)
   local self = {
     resource = resource_provider,
     allocator = machine_allocator,
+    policy = nil,
     reserved = {},
     produced = {},
     inflight = {},
@@ -76,7 +78,14 @@ function M.new(resource_provider, machine_allocator)
     if not inputs_available(step) then
       return false
     end
-    local machine = self.allocator:find_compatible(step.recipe)
+    local machine
+    if self.policy and self.policy.select_machine then
+      machine = self.policy:select_machine(step.recipe, self.allocator)
+    elseif self.allocator.find_compatible_with_policy then
+      machine = self.allocator:find_compatible_with_policy(step.recipe, self.policy)
+    else
+      machine = self.allocator:find_compatible(step.recipe)
+    end
     if not machine then
       return false
     end
@@ -131,7 +140,7 @@ function M.new(resource_provider, machine_allocator)
     return progressed
   end
 
-  function self:poll_resource_requests()
+  function self:poll_resource_requests(on_supply_progress)
     if not self.resource.poll_request then
       return false
     end
@@ -148,9 +157,15 @@ function M.new(resource_provider, machine_allocator)
         if type(result) == "table" then
           for item, count in pairs(result) do
             self.reserved[item] = (self.reserved[item] or 0) + count
+            if on_supply_progress then
+              on_supply_progress(item, count)
+            end
           end
         else
           self.reserved[r.item] = (self.reserved[r.item] or 0) + r.count
+          if on_supply_progress then
+            on_supply_progress(r.item, r.count)
+          end
         end
         table.remove(self.resource_requests, i)
         progressed = true
@@ -276,8 +291,8 @@ local function run_loop(ctx, plan, max_steps_per_tick, task_timeout)
   ctx:apply_outputs()
 end
 
-local function run_graph_loop(ctx, graph, max_steps_per_tick, task_timeout)
-  local state = scheduler.schedule(graph, {})
+local function run_graph_loop(ctx, graph, max_steps_per_tick, task_timeout, policy)
+  local state = scheduler.schedule(graph, {}, policy)
   local tick = 0
 
   for _, node in ipairs(graph.nodes) do
@@ -288,11 +303,19 @@ local function run_graph_loop(ctx, graph, max_steps_per_tick, task_timeout)
     end
   end
 
-  while (not scheduler.all_done(state)) or #ctx.inflight > 0 do
+  while (not scheduler.all_done(state)) or #ctx.inflight > 0 or #ctx.resource_requests > 0 do
     tick = tick + 1
     local progressed = false
 
     local processed = 0
+    local available = {}
+    for item, count in pairs(ctx.reserved) do
+      available[item] = (available[item] or 0) + count
+    end
+    for item, count in pairs(ctx.produced) do
+      available[item] = (available[item] or 0) + count
+    end
+    state.available = available
     local ready = scheduler.get_ready_tasks(state)
     for _, task in ipairs(ready) do
       if max_steps_per_tick and max_steps_per_tick > 0 and processed >= max_steps_per_tick then
@@ -357,6 +380,11 @@ function M.execute(plan, resource_provider, machine_allocator, opts)
   local ctx = M.new(resource_provider, machine_allocator)
   local max_steps_per_tick = opts and opts.max_steps_per_tick or 1
   local task_timeout = opts and opts.task_timeout
+  local policy = opts and opts.policy
+  if policy == nil and opts and opts.policy_rules then
+    policy = policy_module.new(opts.policy_rules)
+  end
+  ctx.policy = policy
 
   if resource_provider.begin then
     resource_provider:begin()
@@ -364,7 +392,7 @@ function M.execute(plan, resource_provider, machine_allocator, opts)
 
   local ok, err = pcall(function()
     if is_graph(plan) then
-      run_graph_loop(ctx, plan, max_steps_per_tick, task_timeout)
+      run_graph_loop(ctx, plan, max_steps_per_tick, task_timeout, policy)
     else
       run_loop(ctx, plan, max_steps_per_tick, task_timeout)
     end

@@ -6,8 +6,14 @@ local M = {}
 
 local function test_scheduler_ready_tasks()
   local graph = plan_graph.new()
-  local supply_id = graph:add_node({ kind = "supply", item = "item:a", count = 1 })
-  local craft_id = graph:add_node({ kind = "craft", recipe = { id = "make_b" }, times = 1 })
+  local supply_id = graph:add_node({ kind = "supply", item = "item:a", count = 1, inputs = {}, outputs = { ["item:a"] = 1 } })
+  local craft_id = graph:add_node({
+    kind = "craft",
+    recipe = { id = "make_b" },
+    times = 1,
+    inputs = { ["item:a"] = 1 },
+    outputs = { ["item:b"] = 1 },
+  })
   graph:add_edge(supply_id, craft_id)
 
   local state = scheduler.schedule(graph, {})
@@ -17,6 +23,7 @@ local function test_scheduler_ready_tasks()
 
   scheduler.mark_started(state, ready[1])
   scheduler.update_after_completion(ready[1], state)
+  state.available = { ["item:a"] = 1 }
 
   ready = scheduler.get_ready_tasks(state)
   assert_equal(#ready, 1, "ready count after supply")

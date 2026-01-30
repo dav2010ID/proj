@@ -59,12 +59,12 @@ local function test_parallel_goals()
     { item = "minecraft:furnace", count = 1 },
   }
 
-  local ok, plan_or_err = planner.plan_many(goals, recipes_by_output, resource)
-  assert(ok, plan_or_err)
+  local ok, graph_or_err = planner.plan_many(goals, recipes_by_output, resource)
+  assert(ok, graph_or_err)
 
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, resource, allocator)
-    assert(exec_ok, err)
+    local exec_ok, err = executor.execute(graph_or_err, resource, allocator)
+    assert_equal(exec_ok, true, err and (err.code or err) or "executor failed")
   end)
 
   utils.run_coroutine(world, co, 50)

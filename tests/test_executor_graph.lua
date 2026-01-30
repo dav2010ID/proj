@@ -23,7 +23,7 @@ local function test_executor_graph_success()
     priority = 1,
   })
   local recipes_by_output = recipe.rebuild_index(registry)
-  local ok, _plan, graph = planner.plan("item:b", 1, recipes_by_output, world.storage, { return_graph = true })
+  local ok, _plan, graph = planner.plan("item:b", 1, recipes_by_output, world.storage, { return_steps = true })
   assert_equal(ok, true, "plan ok")
 
   local co = coroutine.create(function()

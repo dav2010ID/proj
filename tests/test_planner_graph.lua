@@ -20,7 +20,7 @@ local function test_planner_returns_graph()
   })
   local recipes_by_output = recipe.rebuild_index(registry)
 
-  local ok, plan_or_err, graph = planner.plan("item:b", 1, recipes_by_output, world.storage, { return_graph = true })
+  local ok, plan_or_err, graph = planner.plan("item:b", 1, recipes_by_output, world.storage, { return_steps = true })
   assert_equal(ok, true, "plan ok")
   assert_equal(type(graph) == "table", true, "graph returned")
   assert_equal(#graph.nodes, #plan_or_err, "graph size")

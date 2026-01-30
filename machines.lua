@@ -71,6 +71,35 @@ function M.new_allocator(machines, bus)
     return nil
   end
 
+  function self:find_compatible_with_policy(recipe, policy)
+    if policy and policy.machine_order then
+      for _, id in ipairs(policy.machine_order) do
+        local machine = self.free[id]
+        if machine and machine.type == recipe.machine and machine.provider:can_craft(recipe, machine) then
+          assert(self.busy[id] == nil)
+          self.free[id] = nil
+          self.busy[id] = machine
+          return machine
+        end
+      end
+    end
+    if policy and policy.machine_type_order then
+      for _, machine_type in ipairs(policy.machine_type_order) do
+        if machine_type == recipe.machine then
+          for id, machine in pairs(self.free) do
+            if machine.type == machine_type and machine.provider:can_craft(recipe, machine) then
+              assert(self.busy[id] == nil)
+              self.free[id] = nil
+              self.busy[id] = machine
+              return machine
+            end
+          end
+        end
+      end
+    end
+    return self:find_compatible(recipe)
+  end
+
   function self:supports_recipe(recipe)
     for _, machine in pairs(self.free) do
       if machine.type == recipe.machine and machine.provider:can_craft(recipe, machine) then

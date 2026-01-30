@@ -47,11 +47,11 @@ local function test_two_storages_one_failed()
 
   local registry = recipe.new_registry()
   local recipes_by_output = recipe.rebuild_index(registry)
-  local ok, plan_or_err = planner.plan("item:b", 1, recipes_by_output, resource)
+  local ok, graph_or_err = planner.plan("item:b", 1, recipes_by_output, resource)
   assert_equal(ok, true, "plan ok")
 
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, resource, world:get_allocator())
+    local exec_ok, err = executor.execute(graph_or_err, resource, world:get_allocator())
     if exec_ok then
       error("expected failure")
     end

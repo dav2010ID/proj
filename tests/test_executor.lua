@@ -25,10 +25,10 @@ local function test_executor_success()
     priority = 1,
   })
   local recipes_by_output = recipe.rebuild_index(registry)
-  local ok, plan_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
+  local ok, graph_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
   assert_equal(ok, true, "plan ok")
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, world.storage, world:get_allocator())
+    local exec_ok, err = executor.execute(graph_or_err, world.storage, world:get_allocator())
     if not exec_ok then
       error(err)
     end
@@ -52,10 +52,10 @@ local function test_no_compatible_machine()
     priority = 1,
   })
   local recipes_by_output = recipe.rebuild_index(registry)
-  local ok, plan_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
+  local ok, graph_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
   assert_equal(ok, true, "plan ok")
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, world.storage, world:get_allocator())
+    local exec_ok, err = executor.execute(graph_or_err, world.storage, world:get_allocator())
     if exec_ok then
       error("expected failure")
     end
@@ -102,10 +102,10 @@ local function test_executor_timeout()
     priority = 1,
   })
   local recipes_by_output = recipe.rebuild_index(registry)
-  local ok, plan_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
+  local ok, graph_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
   assert_equal(ok, true, "plan ok")
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, world.storage, world:get_allocator(), { task_timeout = 1 })
+    local exec_ok, err = executor.execute(graph_or_err, world.storage, world:get_allocator(), { task_timeout = 1 })
     if exec_ok then
       error("expected timeout")
     end
@@ -254,10 +254,10 @@ local function test_executor_rollback_on_fail()
     priority = 1,
   })
   local recipes_by_output = recipe.rebuild_index(registry)
-  local ok, plan_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
+  local ok, graph_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
   assert_equal(ok, true, "plan ok")
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, world.storage, world:get_allocator())
+    local exec_ok, err = executor.execute(graph_or_err, world.storage, world:get_allocator())
     if exec_ok then
       error("expected failure")
     end

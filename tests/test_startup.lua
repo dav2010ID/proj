@@ -230,7 +230,7 @@ local function run_startup(opts)
   local resource = world.storage
   local allocator = world:get_allocator()
 
-  local ok, plan_or_err =
+  local ok, graph_or_err =
     planner.plan("minecraft:advanced_machine", 1, recipes_by_output, resource)
 
   if not ok then
@@ -239,14 +239,14 @@ local function run_startup(opts)
     end
     return {
       ok = false,
-      err = plan_or_err,
+      err = graph_or_err,
       craftos = craftos,
       trace = world:trace_dump(),
     }
   end
 
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, resource, allocator, { max_steps_per_tick = 1000 })
+    local exec_ok, err = executor.execute(graph_or_err, resource, allocator, { max_steps_per_tick = 1000 })
     if not exec_ok then
       log.error(err)
     else

@@ -8,6 +8,7 @@ function M.new()
     nodes = {},
     edges = {},
     deps = {},
+    flows = {},
   }, PlanGraph)
 end
 
@@ -27,6 +28,17 @@ function PlanGraph:add_edge(from_id, to_id)
     self.edges[from_id][to_id] = true
     self.deps[to_id][from_id] = true
   end
+end
+
+function PlanGraph:add_flow(from_id, to_id, item, amount)
+  assert(self.nodes[from_id], "invalid from_id")
+  assert(self.nodes[to_id], "invalid to_id")
+  if not self.edges[from_id][to_id] then
+    self.edges[from_id][to_id] = true
+    self.deps[to_id][from_id] = true
+  end
+  self.flows[to_id] = self.flows[to_id] or {}
+  table.insert(self.flows[to_id], { from = from_id, item = item, amount = amount })
 end
 
 function PlanGraph:get_dependencies(node_id)
@@ -80,7 +92,7 @@ end
 
 function M.from_steps(steps)
   local graph = M.new()
-  local prev_id = nil
+  local last_producer = {}
   for _, step in ipairs(steps or {}) do
     local node
     if step.kind == "supply" then
@@ -99,10 +111,19 @@ function M.from_steps(steps)
       error("unknown_step")
     end
     local id = graph:add_node(node)
-    if prev_id then
-      graph:add_edge(prev_id, id)
+    if node.kind == "craft" then
+      for _, input in ipairs(node.recipe.inputs or {}) do
+        local dep = last_producer[input.item]
+        if dep then
+          graph:add_edge(dep, id)
+        end
+      end
+      for _, output in ipairs(node.recipe.outputs or {}) do
+        last_producer[output.item] = id
+      end
+    else
+      last_producer[node.item] = id
     end
-    prev_id = id
   end
   return graph
 end

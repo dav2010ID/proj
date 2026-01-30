@@ -37,5 +37,21 @@ function M.craft(recipe, times)
   return setmetatable(step, CraftStep)
 end
 
+function M.from_graph(graph)
+  local ordered = graph:topological_sort()
+  local out = {}
+  for _, id in ipairs(ordered) do
+    local node = graph.nodes[id]
+    if node.kind == "supply" then
+      table.insert(out, M.supply(node.item, node.count))
+    elseif node.kind == "craft" then
+      table.insert(out, M.craft(node.recipe, node.times))
+    else
+      error("unknown_step")
+    end
+  end
+  return out
+end
+
 return M
 

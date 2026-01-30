@@ -99,7 +99,7 @@ function M.new(initial_stock, opts)
     if #active == 1 then
       return active[1].provider
     end
-    return multi_storage.new(active, self.bus)
+    return multi_storage.new(active, self.bus, opts.policy)
   end
 
   function self:attach_storage(storage, id)

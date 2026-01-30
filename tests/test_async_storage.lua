@@ -27,11 +27,11 @@ local function test_async_storage_delays_craft()
   })
 
   local recipes_by_output = recipe.rebuild_index(registry)
-  local ok, plan_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
-  assert(ok, plan_or_err)
+  local ok, graph_or_err = planner.plan("item:b", 1, recipes_by_output, world.storage)
+  assert(ok, graph_or_err)
 
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, world.storage, world:get_allocator())
+    local exec_ok, err = executor.execute(graph_or_err, world.storage, world:get_allocator())
     if not exec_ok then
       error(err)
     end

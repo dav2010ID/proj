@@ -49,14 +49,14 @@ function M.run()
   local resource = world.storage
   local allocator = world:get_allocator()
 
-  local ok, plan_or_err = planner.plan("minecraft:crafting_table", 1, recipes_by_output, resource)
+  local ok, graph_or_err = planner.plan("minecraft:crafting_table", 1, recipes_by_output, resource)
   if not ok then
-    log.error(plan_or_err)
+    log.error(graph_or_err)
     return nil
   end
 
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, resource, allocator)
+    local exec_ok, err = executor.execute(graph_or_err, resource, allocator)
     if not exec_ok then
       log.error(err)
     else

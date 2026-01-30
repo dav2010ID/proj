@@ -44,13 +44,13 @@ local allocator = machines.new_allocator({
   machines.new("crafting_table_1", "crafting_table", crafting_table.new()),
 })
 
-local ok, plan_or_err = planner.plan("minecraft:crafting_table", 1, recipes_by_output, resource)
+local ok, graph_or_err = planner.plan("minecraft:crafting_table", 1, recipes_by_output, resource)
 if not ok then
-  log.error(plan_or_err)
+  log.error(graph_or_err)
   return
 end
 
-local exec_ok, err = executor.execute(plan_or_err, resource, allocator)
+local exec_ok, err = executor.execute(graph_or_err, resource, allocator)
 if not exec_ok then
   log.error(err)
   return

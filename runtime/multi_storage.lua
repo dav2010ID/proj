@@ -16,10 +16,11 @@ local function sort_keys(map)
   return keys
 end
 
-function M.new(providers, bus)
+function M.new(providers, bus, policy)
   local self = {
     providers = providers or {},
     bus = bus,
+    policy = policy,
     inflight = {},
     counter = 0,
     capabilities = {
@@ -42,6 +43,9 @@ function M.new(providers, bus)
   end
 
   local function find_provider(item)
+    if self.policy and self.policy.select_storage then
+      return self.policy:select_storage(item, self.providers)
+    end
     for _, entry in ipairs(self.providers) do
       local provider = entry.provider
       if provider.supports and provider:supports(item) then

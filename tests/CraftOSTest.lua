@@ -11,6 +11,7 @@ local modules = {
   "tests.test_planner_graph",
   "tests.test_capability",
   "tests.test_provider_capabilities",
+  "tests.test_policy",
   "tests.test_events",
   "tests.test_event_validator",
   "tests.test_event_bus",
