@@ -40,6 +40,8 @@ function M.new(default_storage, bus)
               get_async = true,
               get_batch_async = true,
               collect_request = true,
+              request = true,
+              collect = true,
               set_limits = true,
               set_supported_items = true,
             }

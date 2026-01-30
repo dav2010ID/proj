@@ -176,6 +176,31 @@ function M.new(providers, bus, policy)
     return master_id
   end
 
+  function self:request(payload)
+    if type(payload) ~= "table" then
+      error({ code = errors.INVALID_REQUEST, reason = "payload_required" })
+    end
+    if payload.items then
+      local id = self:get_batch_async(payload.items)
+      return { id = id, kind = "batch", items = payload.items }
+    end
+    if not payload.item or payload.count == nil then
+      error({ code = errors.INVALID_REQUEST, reason = "item_count_required" })
+    end
+    local id = self:get_batch_async({ [util.normalize(payload.item)] = payload.count })
+    return { id = id, kind = "single", item = payload.item, count = payload.count }
+  end
+
+  function self:poll(handle)
+    local id = type(handle) == "table" and handle.id or handle
+    return self:poll_request(id)
+  end
+
+  function self:collect(handle)
+    local id = type(handle) == "table" and handle.id or handle
+    return self:collect_request(id)
+  end
+
   function self:poll_request(id)
     local master = self.inflight[id]
     if not master then

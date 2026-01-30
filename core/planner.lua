@@ -219,6 +219,8 @@ function M.plan(target_item_key, target_count, recipes_by_output, resource_provi
     end
   end
 
+  ctx.graph = plan_graph.normalize(ctx.graph)
+
   if opts and opts.return_steps then
     local result = steps.from_graph(ctx.graph)
     return true, result, ctx.graph
@@ -281,6 +283,8 @@ function M.plan_many(goals, recipes_by_output, resource_provider, opts)
       ctx.graph:add_flow(supply_id, edge.to, item, edge.amount)
     end
   end
+
+  ctx.graph = plan_graph.normalize(ctx.graph)
 
   if opts and opts.return_steps then
     local result = steps.from_graph(ctx.graph)

@@ -128,4 +128,117 @@ function M.from_steps(steps)
   return graph
 end
 
+function M.normalize(graph)
+  if not graph or type(graph.nodes) ~= "table" then
+    error("invalid_graph")
+  end
+  local out = M.new()
+  local key_to_id = {}
+  local old_to_new = {}
+
+  local function merge_map(dst, src)
+    if not src then
+      return
+    end
+    for k, v in pairs(src) do
+      dst[k] = (dst[k] or 0) + v
+    end
+  end
+
+  local function node_key(node, id)
+    if node.kind == "supply" then
+      return "supply:" .. tostring(node.item or "")
+    elseif node.kind == "craft" then
+      local rid = node.recipe and node.recipe.id or tostring(node.recipe or "")
+      local machine = node.recipe and node.recipe.machine or ""
+      return "craft:" .. tostring(rid) .. ":" .. tostring(machine)
+    end
+    return "node:" .. tostring(id)
+  end
+
+  for id = 1, #graph.nodes do
+    local node = graph.nodes[id]
+    local key = node_key(node, id)
+    local new_id = key_to_id[key]
+    if not new_id then
+      local new_node
+      if node.kind == "supply" then
+        local count = node.count or 0
+        new_node = {
+          kind = "supply",
+          item = node.item,
+          count = count,
+          inputs = {},
+          outputs = { [node.item] = count },
+        }
+      elseif node.kind == "craft" then
+        new_node = {
+          kind = "craft",
+          recipe = node.recipe,
+          times = node.times or 0,
+          inputs = {},
+          outputs = {},
+        }
+        merge_map(new_node.inputs, node.inputs)
+        merge_map(new_node.outputs, node.outputs)
+      else
+        new_node = node
+      end
+      new_id = out:add_node(new_node)
+      key_to_id[key] = new_id
+    else
+      local target = out.nodes[new_id]
+      if node.kind == "supply" then
+        local count = node.count or 0
+        target.count = (target.count or 0) + count
+        target.outputs = target.outputs or {}
+        target.outputs[node.item] = (target.outputs[node.item] or 0) + count
+      elseif node.kind == "craft" then
+        target.times = (target.times or 0) + (node.times or 0)
+        target.inputs = target.inputs or {}
+        target.outputs = target.outputs or {}
+        merge_map(target.inputs, node.inputs)
+        merge_map(target.outputs, node.outputs)
+      end
+    end
+    old_to_new[id] = new_id
+  end
+
+  for from_id, tos in pairs(graph.edges or {}) do
+    local new_from = old_to_new[from_id]
+    if new_from then
+      for to_id, _ in pairs(tos) do
+        local new_to = old_to_new[to_id]
+        if new_to and new_to ~= new_from then
+          out:add_edge(new_from, new_to)
+        end
+      end
+    end
+  end
+
+  local merged_flows = {}
+  for to_id, flows in pairs(graph.flows or {}) do
+    local new_to = old_to_new[to_id]
+    if new_to then
+      merged_flows[new_to] = merged_flows[new_to] or {}
+      for _, flow in ipairs(flows) do
+        local new_from = old_to_new[flow.from]
+        if new_from and new_from ~= new_to then
+          local item = flow.item
+          local key = tostring(new_from) .. "|" .. tostring(item or "")
+          merged_flows[new_to][key] = merged_flows[new_to][key] or { from = new_from, item = item, amount = 0 }
+          merged_flows[new_to][key].amount = merged_flows[new_to][key].amount + (flow.amount or 0)
+        end
+      end
+    end
+  end
+  for new_to, map in pairs(merged_flows) do
+    for _, flow in pairs(map) do
+      out:add_flow(flow.from, new_to, flow.item, flow.amount)
+    end
+  end
+
+  return out
+end
+
 return M

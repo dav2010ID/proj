@@ -26,15 +26,26 @@ function M.new(resource_provider, machine_allocator)
   -- - craft is exclusive per machine, allocator controls locks
   -- - context owns transaction boundaries (consume_supplies/commit/rollback)
   function self:execute_supply(step)
+    if self.resource.request then
+      if capability.has_capability(self.resource, "batch") then
+        self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
+      else
+        local handle = self.resource:request({ item = step.item, count = step.count })
+        table.insert(self.resource_requests, { handle = handle, item = step.item, count = step.count })
+      end
+      return
+    end
     if self.resource.get_batch_async then
       self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
-    elseif self.resource.get_async then
+      return
+    end
+    if self.resource.get_async then
       local req_id = self.resource:get_async(step.item, step.count)
       table.insert(self.resource_requests, { id = req_id, item = step.item, count = step.count })
-    else
-      self.reserved[step.item] = (self.reserved[step.item] or 0) + step.count
-      self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
+      return
     end
+    self.reserved[step.item] = (self.reserved[step.item] or 0) + step.count
+    self.supply_totals[step.item] = (self.supply_totals[step.item] or 0) + step.count
   end
 
   function self:execute_craft(step, started_tick)
@@ -90,6 +101,9 @@ function M.new(resource_provider, machine_allocator)
       return false
     end
     local ok, handle_or_err = pcall(function()
+      if machine.provider.request then
+        return machine.provider:request({ recipe = step.recipe, times = step.times })
+      end
       return machine.provider:start(step.recipe, step.times)
     end)
     if not ok then
@@ -125,7 +139,12 @@ function M.new(resource_provider, machine_allocator)
         self.allocator:unlock(task.machine_id)
         error(task.handle.error or { code = errors.CRAFT_FAILED })
       else
-        local outputs = task.provider:collect_outputs(task.handle)
+        local outputs
+        if task.provider.collect then
+          outputs = task.provider:collect(task.handle)
+        else
+          outputs = task.provider:collect_outputs(task.handle)
+        end
         for item, count in pairs(outputs) do
           self.produced[item] = (self.produced[item] or 0) + count
         end
@@ -141,19 +160,29 @@ function M.new(resource_provider, machine_allocator)
   end
 
   function self:poll_resource_requests(on_supply_progress)
-    if not self.resource.poll_request then
+    if not self.resource.poll and not self.resource.poll_request then
       return false
     end
     local progressed = false
     for i = #self.resource_requests, 1, -1 do
       local r = self.resource_requests[i]
-      local state = self.resource:poll_request(r.id)
+      local state
+      if self.resource.poll then
+        state = self.resource:poll(r.handle or r.id)
+      else
+        state = self.resource:poll_request(r.id)
+      end
       if state == task_state.TaskState.RUNNING then
         -- wait
       elseif state == task_state.TaskState.FAILED then
         error({ code = errors.RESOURCE_FAILED, item = r.item })
       else
-        local result = self.resource:collect_request(r.id)
+        local result
+        if self.resource.collect then
+          result = self.resource:collect(r.handle or r.id)
+        else
+          result = self.resource:collect_request(r.id)
+        end
         if type(result) == "table" then
           for item, count in pairs(result) do
             self.reserved[item] = (self.reserved[item] or 0) + count
@@ -175,7 +204,11 @@ function M.new(resource_provider, machine_allocator)
   end
 
   function self:dispatch_supply_batches()
-    if not self.resource.get_batch_async then
+    if self.resource.request then
+      if not capability.has_capability(self.resource, "batch") then
+        return
+      end
+    elseif not self.resource.get_batch_async then
       return
     end
     if self.batches_dispatched then
@@ -187,14 +220,23 @@ function M.new(resource_provider, machine_allocator)
     local caps = capability.get_capability_limits(self.resource, "batch")
     local batches = supply_router.split_batches(self.supply_totals, caps)
     for _, batch in ipairs(batches) do
-      local req_id = self.resource:get_batch_async(batch)
-      table.insert(self.resource_requests, { id = req_id, batch = true })
+      if self.resource.request then
+        local handle = self.resource:request({ items = batch })
+        table.insert(self.resource_requests, { handle = handle, batch = true })
+      else
+        local req_id = self.resource:get_batch_async(batch)
+        table.insert(self.resource_requests, { id = req_id, batch = true })
+      end
     end
     self.batches_dispatched = true
   end
 
   function self:consume_supplies()
     if self.resource_requests and #self.resource_requests > 0 then
+      return
+    end
+    if self.resource.request and capability.has_capability(self.resource, "batch") then
+      self.supply_totals = {}
       return
     end
     if self.resource.get_batch_async then

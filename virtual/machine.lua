@@ -62,11 +62,23 @@ function M.new(scheduler, opts)
       end
       return handle
     end,
+    request = function(self, payload)
+      if type(payload) ~= "table" then
+        error({ code = errors.INVALID_REQUEST, reason = "payload_required" })
+      end
+      if not payload.recipe or payload.times == nil then
+        error({ code = errors.INVALID_REQUEST, reason = "recipe_times_required" })
+      end
+      return self:start(payload.recipe, payload.times)
+    end,
     poll = function(self, handle)
       if auto_advance then
         scheduler:tick()
       end
       return handle.state
+    end,
+    collect = function(self, handle)
+      return self:collect_outputs(handle)
     end,
     collect_outputs = function(self, handle)
       if handle.state ~= task_state.TaskState.DONE then

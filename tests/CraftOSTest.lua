@@ -20,6 +20,7 @@ local modules = {
   "tests.test_executor_graph",
   "tests.test_storage",
   "tests.test_async_storage",
+  "tests.test_async_handle",
   "tests.test_multi_storage",
   "tests.test_supply_router",
   "tests.test_scheduler",

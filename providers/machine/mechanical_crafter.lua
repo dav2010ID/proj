@@ -1,4 +1,5 @@
 local task_state = require("runtime.task_state")
+local errors = require("core.error_codes")
 
 local M = {}
 
@@ -34,8 +35,20 @@ function M.new()
         outputs = outputs,
       }
     end,
+    request = function(self, payload)
+      if type(payload) ~= "table" then
+        error({ code = errors.INVALID_REQUEST, reason = "payload_required" })
+      end
+      if not payload.recipe or payload.times == nil then
+        error({ code = errors.INVALID_REQUEST, reason = "recipe_times_required" })
+      end
+      return self:start(payload.recipe, payload.times)
+    end,
     poll = function(self, handle)
       return handle.state
+    end,
+    collect = function(self, handle)
+      return self:collect_outputs(handle)
     end,
     collect_outputs = function(self, handle)
       return handle.outputs or {}

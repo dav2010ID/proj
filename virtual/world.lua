@@ -4,6 +4,7 @@ local event_bus = require("runtime.event_bus")
 local machine_manager = require("runtime.machine_manager")
 local storage_manager = require("runtime.storage_manager")
 local multi_storage = require("runtime.multi_storage")
+local storage_view = require("runtime.storage_view")
 local machines = require("machines")
 local virtual_storage = require("virtual.storage")
 local virtual_scheduler = require("virtual.scheduler")
@@ -24,7 +25,7 @@ function M.new(initial_stock, opts)
   else
     storage = virtual_storage.new(initial_stock or {}, bus)
   end
-  local storage_mgr = storage_manager.new(storage, bus)
+  local storage_mgr = storage_manager.new(storage_view.new(storage), bus)
 
   bus:subscribe("MachineDetected", function(e) manager:on_machine_detected(e) end)
   bus:subscribe("MachineRemoved", function(e) manager:on_machine_removed(e) end)
@@ -97,9 +98,9 @@ function M.new(initial_stock, opts)
       return nil
     end
     if #active == 1 then
-      return active[1].provider
+      return storage_view.new(active[1].provider)
     end
-    return multi_storage.new(active, self.bus, opts.policy)
+    return storage_view.new(multi_storage.new(active, self.bus, opts.policy))
   end
 
   function self:attach_storage(storage, id)

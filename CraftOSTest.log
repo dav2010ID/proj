@@ -13,27 +13,87 @@
 [INFO] run tests.test_executor_graph
 [INFO] run tests.test_storage
 [INFO] run tests.test_async_storage
+[INFO] run tests.test_async_handle
 [INFO] run tests.test_multi_storage
 [INFO] run tests.test_supply_router
 [INFO] run tests.test_scheduler
 [INFO] run tests.test_startup
 [INFO] test_startup:start
+[INFO] PlanGraph:
+[INFO]   #11 supply minecraft:cobblestone x16
+[INFO]     outputs: minecraft:cobblestone=16
+[INFO]   #10 craft furnace x1
+[INFO]     inputs: minecraft:cobblestone=8
+[INFO]     outputs: minecraft:furnace=1
+[INFO]     deps: 11
+[INFO]     flows: 11:minecraft:cobblestone=8
+[INFO]   #12 supply minecraft:coal x13
+[INFO]     outputs: minecraft:coal=13
+[INFO]   #13 supply minecraft:iron_ore x13
+[INFO]     outputs: minecraft:iron_ore=13
+[INFO]   #4 craft smelt_iron x13
+[INFO]     inputs: minecraft:coal=13, minecraft:iron_ore=13
+[INFO]     outputs: minecraft:iron_ingot=13
+[INFO]     deps: 12, 13
+[INFO]     flows: 12:minecraft:coal=13, 13:minecraft:iron_ore=13
+[INFO]   #3 craft iron_plate x4
+[INFO]     inputs: minecraft:iron_ingot=8
+[INFO]     outputs: minecraft:iron_plate=4
+[INFO]     deps: 4
+[INFO]     flows: 4:minecraft:iron_ingot=8
+[INFO]   #2 craft machine_casing x1
+[INFO]     inputs: minecraft:iron_plate=4
+[INFO]     outputs: minecraft:machine_casing=1
+[INFO]     deps: 3
+[INFO]     flows: 3:minecraft:iron_plate=4
+[INFO]   #14 supply minecraft:oak_log x2
+[INFO]     outputs: minecraft:oak_log=2
+[INFO]   #8 craft planks x2
+[INFO]     inputs: minecraft:oak_log=2
+[INFO]     outputs: minecraft:oak_planks=8
+[INFO]     deps: 14
+[INFO]     flows: 14:minecraft:oak_log=2
+[INFO]   #7 craft sticks x1
+[INFO]     inputs: minecraft:oak_planks=2
+[INFO]     outputs: minecraft:stick=4
+[INFO]     deps: 8
+[INFO]     flows: 8:minecraft:oak_planks=2
+[INFO]   #6 craft iron_gear x2
+[INFO]     inputs: minecraft:iron_ingot=4, minecraft:stick=4
+[INFO]     outputs: minecraft:iron_gear=2
+[INFO]     deps: 4, 7
+[INFO]     flows: 4:minecraft:iron_ingot=4, 7:minecraft:stick=4
+[INFO]   #9 craft basic_circuit x1
+[INFO]     inputs: minecraft:iron_ingot=1, minecraft:oak_planks=4
+[INFO]     outputs: minecraft:basic_circuit=1
+[INFO]     deps: 4, 8
+[INFO]     flows: 4:minecraft:iron_ingot=1, 8:minecraft:oak_planks=2
+[INFO]   #5 craft mechanism x1
+[INFO]     inputs: minecraft:basic_circuit=1, minecraft:iron_gear=2
+[INFO]     outputs: minecraft:mechanism=1
+[INFO]     deps: 6, 9
+[INFO]     flows: 6:minecraft:iron_gear=2, 9:minecraft:basic_circuit=1
+[INFO]   #1 craft advanced_machine x1
+[INFO]     inputs: minecraft:cobblestone=8, minecraft:furnace=1, minecraft:machine_casing=1, minecraft:mechanism=1
+[INFO]     outputs: minecraft:advanced_machine=1
+[INFO]     deps: 2, 5, 10, 11
+[INFO]     flows: 10:minecraft:furnace=1, 11:minecraft:cobblestone=8, 5:minecraft:mechanism=1, 2:minecraft:machine_casing=1
 [INFO] Execution complete
 [INFO] Final stock:
-[INFO]   minecraft:iron_ingot = 0
+[INFO]   minecraft:advanced_machine = 1
+[INFO]   minecraft:mechanism = 0
+[INFO]   minecraft:machine_casing = 0
+[INFO]   minecraft:oak_log = 6
+[INFO]   minecraft:cobblestone = 0
 [INFO]   minecraft:coal = 0
 [INFO]   minecraft:furnace = 0
-[INFO]   minecraft:oak_log = 6
-[INFO]   minecraft:iron_gear = 0
-[INFO]   minecraft:cobblestone = 0
-[INFO]   minecraft:iron_ore = 0
-[INFO]   minecraft:machine_casing = 0
-[INFO]   minecraft:basic_circuit = 0
-[INFO]   minecraft:advanced_machine = 1
-[INFO]   minecraft:stick = 0
 [INFO]   minecraft:iron_plate = 0
-[INFO]   minecraft:mechanism = 0
 [INFO]   minecraft:oak_planks = 2
+[INFO]   minecraft:iron_ingot = 0
+[INFO]   minecraft:iron_gear = 0
+[INFO]   minecraft:iron_ore = 0
+[INFO]   minecraft:basic_circuit = 0
+[INFO]   minecraft:stick = 0
 [INFO] test_startup:done
 [INFO] run tests.test_provider_contract
 [INFO] provider_contract_start

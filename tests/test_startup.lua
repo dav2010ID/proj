@@ -13,6 +13,73 @@ local errors = require("core.error_codes")
 
 local M = {}
 
+local function map_to_pairs(map)
+  local keys = {}
+  for k, _ in pairs(map or {}) do
+    table.insert(keys, k)
+  end
+  table.sort(keys)
+  local out = {}
+  for _, k in ipairs(keys) do
+    table.insert(out, k .. "=" .. tostring(map[k]))
+  end
+  return table.concat(out, ", ")
+end
+
+local function node_label(id, node)
+  if node.kind == "supply" then
+    return string.format("#%d supply %s x%d", id, node.item or "?", node.count or 0)
+  end
+  local recipe_id = node.recipe and node.recipe.id or "?"
+  return string.format("#%d craft %s x%d", id, recipe_id, node.times or 0)
+end
+
+local function dump_graph(graph)
+  if not graph or type(graph.nodes) ~= "table" then
+    return
+  end
+  log.info("PlanGraph:")
+  local order = nil
+  local ok, sorted = pcall(function()
+    return graph:topological_sort()
+  end)
+  if ok then
+    order = sorted
+  end
+  if not order then
+    order = {}
+    for i = 1, #graph.nodes do
+      table.insert(order, i)
+    end
+  end
+  for _, id in ipairs(order) do
+    local node = graph.nodes[id]
+    log.info("  " .. node_label(id, node))
+    if node.inputs and next(node.inputs) ~= nil then
+      log.info("    inputs: " .. map_to_pairs(node.inputs))
+    end
+    if node.outputs and next(node.outputs) ~= nil then
+      log.info("    outputs: " .. map_to_pairs(node.outputs))
+    end
+    local deps = graph:get_dependencies(id)
+    if #deps > 0 then
+      local dep_str = {}
+      for _, dep in ipairs(deps) do
+        table.insert(dep_str, tostring(dep))
+      end
+      log.info("    deps: " .. table.concat(dep_str, ", "))
+    end
+    local flows = graph.flows and graph.flows[id] or nil
+    if flows and #flows > 0 then
+      local flow_parts = {}
+      for _, flow in ipairs(flows) do
+        table.insert(flow_parts, string.format("%d:%s=%s", flow.from, flow.item or "?", tostring(flow.amount or 0)))
+      end
+      log.info("    flows: " .. table.concat(flow_parts, ", "))
+    end
+  end
+end
+
 local function build_craftos_storage(bus, seed_chest_1, seed_chest_2)
   if not periphemu or not peripheral then
     return nil
@@ -139,6 +206,7 @@ local function run_startup(opts)
       trace = world:trace_dump(),
     }
   end
+  dump_graph(graph_or_err)
 
   local co = coroutine.create(function()
     local exec_ok, err = executor.execute(graph_or_err, resource, allocator, { max_steps_per_tick = 1000 })
