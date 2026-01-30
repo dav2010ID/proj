@@ -15,6 +15,7 @@ local modules = {
   "tests.test_startup",
   "tests.test_provider_contract",
   "tests.test_parallel_goals",
+  "tests.test_chest_adapter",
 }
 
 local function run_all()
