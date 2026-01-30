@@ -9,10 +9,11 @@ local multi_storage = require("runtime.multi_storage")
 local chest_adapter = require("providers.resource.chest_adapter")
 local virtual_world = require("virtual.world")
 local virtual_machine = require("virtual.machine")
+local errors = require("core.error_codes")
 
 local M = {}
 
-local function build_craftos_storage(bus)
+local function build_craftos_storage(bus, seed_chest_1, seed_chest_2)
   if not periphemu or not peripheral then
     return nil
   end
@@ -67,26 +68,32 @@ local function build_craftos_storage(bus)
   })
 
   seed_provider(chest_1, {
-    ["minecraft:oak_log"] = 8,
-    ["minecraft:cobblestone"] = 16,
+    ["minecraft:oak_log"] = (seed_chest_1 and seed_chest_1["minecraft:oak_log"]) or 8,
+    ["minecraft:cobblestone"] = (seed_chest_1 and seed_chest_1["minecraft:cobblestone"]) or 16,
   })
 
   seed_provider(chest_2, {
-    ["minecraft:iron_ore"] = 13,
-    ["minecraft:coal"] = 13,
+    ["minecraft:iron_ore"] = (seed_chest_2 and seed_chest_2["minecraft:iron_ore"]) or 13,
+    ["minecraft:coal"] = (seed_chest_2 and seed_chest_2["minecraft:coal"]) or 13,
   })
 
-  return multi_storage.new({
-    { id = "chest_1", provider = chest_1 },
-    { id = "chest_2", provider = chest_2 },
-  }, bus)
+  return {
+    kind = "craftos",
+    chest_1 = chest_1,
+    chest_2 = chest_2,
+    storage = multi_storage.new({
+      { id = "chest_1", provider = chest_1 },
+      { id = "chest_2", provider = chest_2 },
+    }, bus),
+  }
 end
 
-local function run_startup()
+local function run_startup(opts)
+  opts = opts or {}
   local world = virtual_world.new({})
-  local craftos_storage = build_craftos_storage(world.bus)
-  if craftos_storage then
-    world:attach_storage(craftos_storage)
+  local craftos = build_craftos_storage(world.bus, opts.seed_chest_1, opts.seed_chest_2)
+  if craftos then
+    world:attach_storage(craftos.storage)
   else
     world.storage:begin()
     world.storage:add("minecraft:oak_log", 8)
@@ -227,8 +234,15 @@ local function run_startup()
     planner.plan("minecraft:advanced_machine", 1, recipes_by_output, resource)
 
   if not ok then
-    log.error(plan_or_err)
-    return nil
+    if not opts.suppress_errors then
+      log.error(plan_or_err)
+    end
+    return {
+      ok = false,
+      err = plan_or_err,
+      craftos = craftos,
+      trace = world:trace_dump(),
+    }
   end
 
   local co = coroutine.create(function()
@@ -255,21 +269,179 @@ local function run_startup()
     log.info("  " .. k .. " = " .. tostring(v))
   end
 
-  return snapshot
+  return {
+    ok = true,
+    snapshot = snapshot,
+    craftos = craftos,
+    trace = world:trace_dump(),
+  }
+end
+
+local function get_first_time(trace, event_type, matcher)
+  for _, ev in ipairs(trace) do
+    if ev.type == event_type and (not matcher or matcher(ev)) then
+      return ev.now or 0
+    end
+  end
+  return nil
+end
+
+local function get_last_time(trace, event_type, matcher)
+  local found = nil
+  for _, ev in ipairs(trace) do
+    if ev.type == event_type and (not matcher or matcher(ev)) then
+      found = ev.now or 0
+    end
+  end
+  return found
+end
+
+local function assert_only_in(primary, secondary, items, label)
+  for _, item in ipairs(items) do
+    assert_equal(secondary[item] or 0, 0, label .. " secondary has " .. item)
+  end
+end
+
+local function assert_all_zero(snapshot, items, label)
+  for _, item in ipairs(items) do
+    assert_equal(snapshot[item] or 0, 0, label .. " has residue " .. item)
+  end
 end
 
 
 local function test_startup_test_run()
-  local snapshot = run_startup()
-  if not snapshot then
+  local result = run_startup()
+  if not result or not result.ok then
     error("startup_test run returned nil")
   end
+  local snapshot = result.snapshot
+  local trace = result.trace or {}
   assert_equal(snapshot["minecraft:advanced_machine"], 1, "advanced_machine")
+
+  assert_all_zero(snapshot, {
+    "minecraft:stick",
+    "minecraft:furnace",
+    "minecraft:iron_ingot",
+    "minecraft:iron_plate",
+    "minecraft:machine_casing",
+    "minecraft:iron_gear",
+    "minecraft:basic_circuit",
+    "minecraft:mechanism",
+  }, "final stock")
+
+  if result.craftos then
+    result.craftos.chest_1:begin()
+    result.craftos.chest_2:begin()
+    local chest_1 = result.craftos.chest_1:snapshot()
+    local chest_2 = result.craftos.chest_2:snapshot()
+
+    assert_only_in(chest_1, chest_2, {
+      "minecraft:oak_log",
+      "minecraft:oak_planks",
+      "minecraft:stick",
+      "minecraft:cobblestone",
+      "minecraft:furnace",
+    }, "chest_1")
+
+    assert_only_in(chest_2, chest_1, {
+      "minecraft:iron_ore",
+      "minecraft:coal",
+      "minecraft:iron_ingot",
+      "minecraft:iron_plate",
+      "minecraft:machine_casing",
+      "minecraft:iron_gear",
+      "minecraft:basic_circuit",
+      "minecraft:mechanism",
+      "minecraft:advanced_machine",
+    }, "chest_2")
+
+    local smelt_start = get_first_time(trace, "TaskStarted", function(e)
+      return e.task_id and string.find(e.task_id, "smelt_iron", 1, true)
+    end)
+    local smelt_finish = get_last_time(trace, "TaskFinished", function(e)
+      return e.task_id and string.find(e.task_id, "smelt_iron", 1, true)
+    end)
+    assert_equal(smelt_start ~= nil, true, "smelt_iron started")
+    assert_equal(smelt_finish ~= nil, true, "smelt_iron finished")
+
+    local iron_plate_start = get_first_time(trace, "TaskStarted", function(e)
+      return e.task_id and string.find(e.task_id, "iron_plate", 1, true)
+    end)
+    local iron_plate_finish = get_last_time(trace, "TaskFinished", function(e)
+      return e.task_id and string.find(e.task_id, "iron_plate", 1, true)
+    end)
+    assert_equal(iron_plate_start ~= nil, true, "iron_plate started")
+    assert_equal(iron_plate_finish ~= nil, true, "iron_plate finished")
+
+    local mechanism_finish = get_last_time(trace, "TaskFinished", function(e)
+      return e.task_id and string.find(e.task_id, "mechanism", 1, true)
+    end)
+    assert_equal(mechanism_finish ~= nil, true, "mechanism finished")
+
+    local casing_finish = get_last_time(trace, "TaskFinished", function(e)
+      return e.task_id and string.find(e.task_id, "machine_casing", 1, true)
+    end)
+    assert_equal(casing_finish ~= nil, true, "machine_casing finished")
+
+    local furnace_finish = get_last_time(trace, "TaskFinished", function(e)
+      return e.task_id and string.find(e.task_id, "furnace", 1, true)
+    end)
+    assert_equal(furnace_finish ~= nil, true, "furnace finished")
+
+    local advanced_start = get_first_time(trace, "TaskStarted", function(e)
+      return e.task_id and string.find(e.task_id, "advanced_machine", 1, true)
+    end)
+    assert_equal(advanced_start ~= nil, true, "advanced_machine started")
+    if advanced_start then
+      assert_equal(advanced_start > casing_finish, true, "advanced_machine after casing")
+      assert_equal(advanced_start > mechanism_finish, true, "advanced_machine after mechanism")
+      assert_equal(advanced_start > furnace_finish, true, "advanced_machine after furnace")
+    end
+
+    local batch_done_chest_2 = get_first_time(trace, "BatchDone", function(e)
+      return e.storage_id == "chest_2"
+    end)
+    if smelt_start and batch_done_chest_2 then
+      assert_equal(batch_done_chest_2 <= smelt_start, true, "smelt after supply batch")
+    end
+
+    local parallel_ok = false
+    for _, ev in ipairs(trace) do
+      if ev.type == "TaskStarted" and ev.task_id and (string.find(ev.task_id, "planks", 1, true) or string.find(ev.task_id, "sticks", 1, true)) then
+        if smelt_start and smelt_finish and ev.now >= smelt_start and ev.now <= smelt_finish then
+          parallel_ok = true
+          break
+        end
+      end
+    end
+    assert_equal(parallel_ok, true, "parallel smelt and crafting")
+
+    local batch_queued = 0
+    for _, ev in ipairs(trace) do
+      if ev.type == "BatchQueued" then
+        batch_queued = batch_queued + 1
+      end
+    end
+    assert_equal(batch_queued, 2, "batch aggregation per storage")
+  end
 end
 
 function M.run()
   log.info("test_startup:start")
   test_startup_test_run()
+  local negative = run_startup({
+    seed_chest_2 = {
+      ["minecraft:iron_ore"] = 13,
+      ["minecraft:coal"] = 12,
+    },
+    suppress_errors = true,
+  })
+  if negative and negative.ok then
+    error("negative variant unexpectedly succeeded")
+  end
+  if negative and negative.err and negative.err.code then
+    assert_equal(negative.err.code, errors.NO_RECIPE_OR_STOCK, "missing coal should fail")
+  end
   log.info("test_startup:done")
 end
 

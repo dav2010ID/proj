@@ -1,51 +1,33 @@
 [INFO] tests:start
 [INFO] run tests.test_planner
-[INFO] test_planner:start
-[INFO] test_planner:done
 [INFO] run tests.test_executor
-[INFO] test_executor:start
-[INFO] test_executor:done
 [INFO] run tests.test_storage
-[INFO] test_storage:start
-[INFO] test_storage:done
 [INFO] run tests.test_async_storage
-[INFO] test_async_storage:start
-[INFO] test_async_storage:done
 [INFO] run tests.test_multi_storage
-[INFO] test_multi_storage:start
-[INFO] test_multi_storage:done
 [INFO] run tests.test_supply_router
-[INFO] test_supply_router:start
-[INFO] test_supply_router:done
 [INFO] run tests.test_startup
 [INFO] test_startup:start
 [INFO] Execution complete
 [INFO] Final stock:
-[INFO]   minecraft:oak_planks = 2
-[INFO]   minecraft:advanced_machine = 1
+[INFO]   minecraft:mechanism = 0
 [INFO]   minecraft:stick = 0
-[INFO]   minecraft:cobblestone = 8
 [INFO]   minecraft:iron_gear = 0
 [INFO]   minecraft:basic_circuit = 0
+[INFO]   minecraft:iron_ore = 0
+[INFO]   minecraft:oak_planks = 2
+[INFO]   minecraft:iron_ingot = 0
+[INFO]   minecraft:machine_casing = 0
 [INFO]   minecraft:oak_log = 6
+[INFO]   minecraft:iron_plate = 0
 [INFO]   minecraft:furnace = 0
 [INFO]   minecraft:coal = 0
-[INFO]   minecraft:machine_casing = 0
-[INFO]   minecraft:iron_ore = 0
-[INFO]   minecraft:iron_ingot = 0
-[INFO]   minecraft:mechanism = 0
-[INFO]   minecraft:iron_plate = 0
+[INFO]   minecraft:advanced_machine = 1
+[INFO]   minecraft:cobblestone = 8
 [INFO] test_startup:done
 [INFO] run tests.test_provider_contract
-[INFO] test_provider_contract:start
 [INFO] provider_contract_start
 [INFO] provider_contract_ok
-[INFO] test_provider_contract:done
 [INFO] run tests.test_parallel_goals
-[INFO] test_parallel_goals:start
-[INFO] test_parallel_goals:done
 [INFO] run tests.test_chest_adapter
-[INFO] test_chest_adapter:start
-[INFO] test_chest_adapter:done
 [INFO] tests:done
 [INFO] All virtual tests passed
