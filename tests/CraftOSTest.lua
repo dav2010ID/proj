@@ -23,17 +23,32 @@ local function run_all()
     max_ticks = 200,
     log_level = "info",
   }
+  local failed = 0
   for _, name in ipairs(modules) do
-    local mod = require(name)
     log.info("run " .. name)
-    mod.run(ctx)
+    local ok_mod, mod_or_err = pcall(require, name)
+    if not ok_mod then
+      failed = failed + 1
+      log.error(mod_or_err)
+    else
+      local ok_run, err_run = pcall(mod_or_err.run, ctx)
+      if not ok_run then
+        failed = failed + 1
+        log.error(err_run)
+      end
+    end
   end
+  return failed
 end
 
-local ok, err = pcall(run_all)
-if not ok then
-  log.error(err)
-  return
+local failed = run_all()
+if failed > 0 then
+  log.error("tests failed: " .. tostring(failed))
+else
+  print("==> All tests passed.")
+  log.info("All virtual tests passed")
 end
-log.info("All virtual tests passed")
+if os and os.shutdown then
+  os.shutdown(failed)
+end
 
