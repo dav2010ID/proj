@@ -1,5 +1,6 @@
 local event_bus = require("runtime.event_bus")
 local machine_manager = require("runtime.machine_manager")
+local storage_manager = require("runtime.storage_manager")
 local machines = require("machines")
 local virtual_storage = require("virtual.storage")
 local virtual_scheduler = require("virtual.scheduler")
@@ -19,18 +20,24 @@ function M.new(initial_stock, opts)
   else
     storage = virtual_storage.new(initial_stock or {}, bus)
   end
+  local storage_mgr = storage_manager.new(storage, bus)
 
   bus:subscribe("MachineDetected", function(e) manager:on_machine_detected(e) end)
   bus:subscribe("MachineRemoved", function(e) manager:on_machine_removed(e) end)
   bus:subscribe("MachineDisabled", function(e) manager:on_machine_disabled(e) end)
   bus:subscribe("MachineEnabled", function(e) manager:on_machine_enabled(e) end)
+  bus:subscribe("StorageDetected", function(e) storage_mgr:on_storage_detected(e) end)
+  bus:subscribe("StorageRemoved", function(e) storage_mgr:on_storage_removed(e) end)
+  bus:subscribe("StorageDisabled", function(e) storage_mgr:on_storage_disabled(e) end)
+  bus:subscribe("StorageEnabled", function(e) storage_mgr:on_storage_enabled(e) end)
 
   local self = {
     time = 0,
     bus = bus,
     scheduler = scheduler,
-    storage = storage,
+    storage = storage_mgr,
     manager = manager,
+    storage_manager = storage_mgr,
     allocator = nil,
     trace = {},
     trace_limit = opts.trace_limit or 200,
@@ -66,6 +73,26 @@ function M.new(initial_stock, opts)
 
   function self:attach_machine(machine_type, provider, machine_id)
     self:emit({ type = "MachineDetected", machine_type = machine_type, provider = provider, machine_id = machine_id })
+  end
+
+  function self:attach_storage(storage)
+    self:emit({ type = "StorageDetected", provider = storage })
+  end
+
+  function self:detach_storage()
+    self:emit({ type = "StorageRemoved" })
+  end
+
+  function self:disable_storage()
+    self:emit({ type = "StorageDisabled" })
+  end
+
+  function self:enable_storage()
+    self:emit({ type = "StorageEnabled" })
+  end
+
+  function self:attach_storage(storage)
+    self.storage = storage
   end
 
   function self:detach_machine(machine_id)

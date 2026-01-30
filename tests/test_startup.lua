@@ -5,18 +5,96 @@ local log = require("core.log")
 local recipe = require("core.recipe")
 local planner = require("core.planner")
 local executor = require("runtime.executor")
+local multi_storage = require("runtime.multi_storage")
+local chest_adapter = require("providers.resource.chest_adapter")
 local virtual_world = require("virtual.world")
 local virtual_machine = require("virtual.machine")
 
 local M = {}
 
-local function run_startup()
-  local world = virtual_world.new({
+local function build_craftos_storage(bus)
+  if not periphemu or not peripheral then
+    return nil
+  end
+
+  local function cleanup_side(side)
+    if periphemu.remove then
+      pcall(function()
+        periphemu.remove(side)
+      end)
+    end
+  end
+
+  local function seed_provider(provider, seed)
+    provider:begin()
+    for item, count in pairs(seed or {}) do
+      provider:add(item, count)
+    end
+    provider:commit()
+  end
+
+  cleanup_side("front")
+  cleanup_side("back")
+
+  local chest_1 = chest_adapter.new({
+    side = "front",
+    create = true,
+    double = false,
+    allowlist = {
+      ["minecraft:oak_log"] = true,
+      ["minecraft:oak_planks"] = true,
+      ["minecraft:stick"] = true,
+      ["minecraft:cobblestone"] = true,
+      ["minecraft:furnace"] = true,
+    },
+  })
+
+  local chest_2 = chest_adapter.new({
+    side = "back",
+    create = true,
+    double = false,
+    allowlist = {
+      ["minecraft:iron_ore"] = true,
+      ["minecraft:coal"] = true,
+      ["minecraft:iron_ingot"] = true,
+      ["minecraft:iron_plate"] = true,
+      ["minecraft:machine_casing"] = true,
+      ["minecraft:iron_gear"] = true,
+      ["minecraft:basic_circuit"] = true,
+      ["minecraft:mechanism"] = true,
+      ["minecraft:advanced_machine"] = true,
+    },
+  })
+
+  seed_provider(chest_1, {
     ["minecraft:oak_log"] = 8,
     ["minecraft:cobblestone"] = 16,
+  })
+
+  seed_provider(chest_2, {
     ["minecraft:iron_ore"] = 13,
     ["minecraft:coal"] = 13,
   })
+
+  return multi_storage.new({
+    { id = "chest_1", provider = chest_1 },
+    { id = "chest_2", provider = chest_2 },
+  }, bus)
+end
+
+local function run_startup()
+  local world = virtual_world.new({})
+  local craftos_storage = build_craftos_storage(world.bus)
+  if craftos_storage then
+    world:attach_storage(craftos_storage)
+  else
+    world.storage:begin()
+    world.storage:add("minecraft:oak_log", 8)
+    world.storage:add("minecraft:cobblestone", 16)
+    world.storage:add("minecraft:iron_ore", 13)
+    world.storage:add("minecraft:coal", 13)
+    world.storage:commit()
+  end
 
   local scheduler = world.scheduler
 
@@ -154,7 +232,7 @@ local function run_startup()
   end
 
   local co = coroutine.create(function()
-    local exec_ok, err = executor.execute(plan_or_err, resource, allocator)
+    local exec_ok, err = executor.execute(plan_or_err, resource, allocator, { max_steps_per_tick = 1000 })
     if not exec_ok then
       log.error(err)
     else
@@ -190,7 +268,9 @@ local function test_startup_test_run()
 end
 
 function M.run()
+  log.info("test_startup:start")
   test_startup_test_run()
+  log.info("test_startup:done")
 end
 
 return M

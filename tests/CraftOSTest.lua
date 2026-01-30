@@ -19,6 +19,7 @@ local modules = {
 }
 
 local function run_all()
+  log.info("tests:start")
   local ctx = {
     seed = os.time(),
     max_ticks = 200,
@@ -39,6 +40,7 @@ local function run_all()
       end
     end
   end
+  log.info("tests:done")
   return failed
 end
 

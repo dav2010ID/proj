@@ -1,5 +1,6 @@
 local util = require("core.util")
 local errors = require("core.error_codes")
+local task_state = require("runtime.task_state")
 
 local M = {}
 
@@ -55,8 +56,9 @@ function M.new(opts)
     snapshot_taken = false,
     reachable = nil,
     slot_snapshot = nil,
-    skip_refresh_once = false,
     allowlist = opts.allowlist,
+    inflight = {},
+    counter = 0,
   }
 
   local function refresh()
@@ -143,7 +145,6 @@ function M.new(opts)
     self.snapshot_taken = false
     self.delta_minus = {}
     self.delta_plus = {}
-    self.skip_refresh_once = false
     refresh()
   end
 
@@ -151,7 +152,6 @@ function M.new(opts)
     self.snapshot_taken = false
     self.delta_minus = {}
     self.delta_plus = {}
-    self.skip_refresh_once = false
     self.slot_snapshot = copy_slots(self.slots)
   end
 
@@ -207,6 +207,7 @@ function M.new(opts)
     self.delta_plus = {}
     self.snapshot_taken = false
     self.slot_snapshot = nil
+    self.inflight = {}
   end
 
   function self:rollback()
@@ -223,7 +224,6 @@ function M.new(opts)
     end
     self.stock = stock
     self.slots = copy_slots(self.slot_snapshot)
-    self.skip_refresh_once = true
     for slot = 1, size do
       set_slot(slot, "", 0)
     end
@@ -234,16 +234,99 @@ function M.new(opts)
     self.delta_plus = {}
     self.snapshot_taken = false
     self.slot_snapshot = nil
+    self.inflight = {}
+  end
+
+  function self:get_async(item, count)
+    local key = util.normalize(item)
+    if self.snapshot_taken then
+      error({ code = errors.MUTATE_AFTER_SNAPSHOT })
+    end
+    if self.reachable and not self.reachable[key] then
+      error({ code = errors.ITEM_NOT_REACHABLE, item = key })
+    end
+    self.counter = self.counter + 1
+    local id = "req_" .. tostring(self.counter)
+    local current = self.stock[key] or 0
+    if count < 0 then
+      error({ code = errors.NEGATIVE_COUNT, item = key, count = count })
+    end
+    if current < count then
+      self.inflight[id] = { item = key, count = count, state = "FAILED", error = { code = errors.INSUFFICIENT_STOCK, item = key } }
+    else
+      self.inflight[id] = { item = key, count = count, state = "DONE" }
+    end
+    return id
+  end
+
+  function self:get_batch_async(request_map)
+    if self.snapshot_taken then
+      error({ code = errors.MUTATE_AFTER_SNAPSHOT })
+    end
+    self.counter = self.counter + 1
+    local id = "batch_" .. tostring(self.counter)
+    for item, count in pairs(request_map) do
+      local key = util.normalize(item)
+      if self.reachable and not self.reachable[key] then
+        self.inflight[id] = { items = request_map, state = "FAILED", error = { code = errors.ITEM_NOT_REACHABLE, item = key } }
+        return id
+      end
+      local current = self.stock[key] or 0
+      if count < 0 then
+        error({ code = errors.NEGATIVE_COUNT, item = key, count = count })
+      end
+      if current < count then
+        self.inflight[id] = { items = request_map, state = "FAILED", error = { code = errors.INSUFFICIENT_STOCK, item = key } }
+        return id
+      end
+    end
+    self.inflight[id] = { items = request_map, state = "DONE" }
+    return id
+  end
+
+  function self:poll_request(id)
+    local req = self.inflight[id]
+    if not req then
+      error({ code = errors.INVALID_HANDLE, id = id })
+    end
+    if req.state == "DONE" then
+      return task_state.TaskState.DONE
+    end
+    if req.state == "FAILED" then
+      return task_state.TaskState.FAILED
+    end
+    return task_state.TaskState.RUNNING
+  end
+
+  function self:collect_request(id)
+    local req = self.inflight[id]
+    if not req then
+      error({ code = errors.INVALID_HANDLE, id = id })
+    end
+    if req.state ~= "DONE" then
+      error({ code = errors.REQUEST_NOT_DONE, id = id })
+    end
+    if req.items then
+      local result = {}
+      for item, count in pairs(req.items) do
+        local key = util.normalize(item)
+        remove_from_slots(key, count)
+        self.stock[key] = (self.stock[key] or 0) - count
+        result[key] = count
+      end
+      self.inflight[id] = nil
+      return result
+    else
+      remove_from_slots(req.item, req.count)
+      self.stock[req.item] = (self.stock[req.item] or 0) - req.count
+      self.inflight[id] = nil
+      return req.count
+    end
   end
 
   function self:snapshot()
     if self.snapshot_taken then
       error({ code = errors.SNAPSHOT_TAKEN })
-    end
-    if self.skip_refresh_once then
-      self.skip_refresh_once = false
-    else
-      refresh()
     end
     self.snapshot_taken = true
     local copy = {}
